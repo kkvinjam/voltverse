@@ -188,6 +188,8 @@ Everything uses **standard OpenTelemetry**. The Python services run under `opent
 | Logs | `ApplicationLogGroup`. JSON logs carry `trace_id` / `span_id` for log↔trace correlation. |
 | Anything else | Set `ExternalOtlpEndpoint`, or edit `k8s/10-otel-collector.yaml` |
 
+**Sparky traffic:** `scripts/sparky-traffic.py <StorefrontUrl> --minutes 15 --rate 8` runs realistic multi-turn conversations: recommendations, comparisons, cart changes, quotes, order tracking, cancellations, payments, policies, and off-topic requests. It creates real orders for the order scenarios first. Every turn calls Bedrock, so mind the cost. The gateway allows about 12 assistant requests per minute per IP.
+
 **Fault injection** for exercises is in the `voltverse-chaos` ConfigMap:
 
 ```bash
