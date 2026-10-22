@@ -7,7 +7,7 @@ viewer ──HTTPS──► CloudFront ─┬─ /assets/*  cached (CachingOptim
                               └─ everything else: no cache, all viewer headers + CloudFront-Viewer-Address
                                    │ VPC origin (private ENIs in the VPC)
                                    ▼
-                    internal ALB (private subnets, SG: tcp/80 from VPC CIDR only, WAF attached)
+                    internal ALB (private subnets, SG: tcp/80 only from CloudFront-VPCOrigins-Service-SG, WAF attached)
                                    │ target group (type ip) ◄── TargetGroupBinding (EKS Auto Mode)
                                    ▼
                     storefront pods: nginx serves the SPA and proxies an allow-list of /api routes

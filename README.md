@@ -183,7 +183,7 @@ Everything uses **standard OpenTelemetry**. The Python services run under `opent
 
 | Signal | Where |
 |---|---|
-| Traces | **X-Ray / CloudWatch trace map** (`TraceMapUrl`). Searchable annotations: `voltverse.order.id`, `voltverse.checkout.outcome`, `voltverse.payment.status`, `session.id`. |
+| Traces | **X-Ray / CloudWatch trace map** (`TraceMapUrl`). If the account has X-Ray *Transaction Search* enabled, spans are stored in the `aws/spans` log group; use **CloudWatch → Transaction Search** to find them, because only a sample is indexed as trace summaries. Searchable annotations: `voltverse.order.id`, `voltverse.checkout.outcome`, `voltverse.payment.status`, `session.id`. |
 | Metrics | CloudWatch namespace **`VoltVerse`** and the `DashboardUrl` dashboard: HTTP latency per service, checkout outcomes, revenue, payment outcomes, agent latency, tool usage, and `gen_ai.*` token usage |
 | Logs | `ApplicationLogGroup`. JSON logs carry `trace_id` / `span_id` for log↔trace correlation. |
 | Anything else | Set `ExternalOtlpEndpoint`, or edit `k8s/10-otel-collector.yaml` |
@@ -229,7 +229,7 @@ cd services/storefront && npm install && npm run dev
   - Lookups don't reveal whether an order exists.
 
   Set `AllowedViewerCidrs` to restrict the whole store to your workshop network.
-- **Single entry point:** CloudFront (HTTPS) → VPC origin → **internal** ALB, whose security group allows only VPC traffic. Nothing in the VPC has a public IP except the NAT gateway.
+- **Single entry point:** CloudFront (HTTPS) → VPC origin → **internal** ALB, whose security group admits only CloudFront's VPC-origin security group. Nothing in the VPC has a public IP except the NAT gateway.
 - **Internal-only APIs:** nginx exposes an allow-list of routes. Payment, restock, reservation, and order-creation APIs are reachable only inside the cluster.
 - **EKS API endpoint:** private by default. The deployer runs inside the VPC.
 - **Pods:**

@@ -7,6 +7,7 @@ set -euo pipefail
 : "${AWS_REGION:?}" "${ACCOUNT_ID:?}" "${CLUSTER_NAME:?}" "${REPO_PREFIX:?}" "${TARGET_GROUP_ARN:?}"
 : "${PRODUCTS_TABLE:?}" "${INVENTORY_TABLE:?}" "${CARTS_TABLE:?}" "${ORDERS_TABLE:?}" "${PAYMENTS_TABLE:?}"
 : "${BEDROCK_MODEL_ID:?}" "${APP_LOG_GROUP:?}" "${METRICS_LOG_GROUP:?}" "${ENVIRONMENT_NAME:?}"
+: "${VPC_ID:?}" "${ALB_SECURITY_GROUP_ID:?}"
 
 export ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 export IMAGE_TAG="${IMAGE_TAG:-b${CODEBUILD_BUILD_NUMBER:-$(date +%s)}}"
@@ -14,6 +15,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+
+log "Allowing the CloudFront VPC origin to reach the internal ALB"
+# CloudFront creates this security group in our VPC when the VPC origin is created.
+CF_SG="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" \
+  "Name=group-name,Values=CloudFront-VPCOrigins-Service-SG" --query 'SecurityGroups[0].GroupId' --output text)"
+[ -n "$CF_SG" ] && [ "$CF_SG" != "None" ] || { echo "CloudFront-VPCOrigins-Service-SG not found in ${VPC_ID}"; exit 1; }
+if ! out="$(aws ec2 authorize-security-group-ingress --group-id "$ALB_SECURITY_GROUP_ID" --ip-permissions \
+    "IpProtocol=tcp,FromPort=80,ToPort=80,UserIdGroupPairs=[{GroupId=${CF_SG},Description=CloudFront VPC origin}]" 2>&1)"; then
+  grep -q InvalidPermission.Duplicate <<<"$out" || { echo "$out"; exit 1; }
+fi
+echo "ALB ${ALB_SECURITY_GROUP_ID} accepts tcp/80 from ${CF_SG}"
 
 log "Installing kubectl matching the cluster version"
 K8S_MINOR="$(aws eks describe-cluster --name "$CLUSTER_NAME" --query cluster.version --output text)"

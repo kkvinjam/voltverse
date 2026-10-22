@@ -210,10 +210,10 @@ Resources:
   AlbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Internal ALB - HTTP from inside the VPC only (CloudFront VPC origin)
+      # Ingress is added by the deployer: tcp/80 from the CloudFront-VPCOrigins-Service-SG, which CloudFront
+      # creates in this VPC together with the VPC origin (so it cannot be referenced here).
+      GroupDescription: Internal ALB - reachable only from the CloudFront VPC origin
       VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: !Ref VpcCidr, Description: CloudFront VPC origin ENIs }
       Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-alb" }]
 
   DeployerSecurityGroup:
@@ -803,6 +803,9 @@ Resources:
                 Action: elasticloadbalancing:DescribeTargetHealth
                 Resource: "*"
               - Effect: Allow
+                Action: [ec2:AuthorizeSecurityGroupIngress, ec2:RevokeSecurityGroupIngress]
+                Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${AlbSecurityGroup.GroupId}"
+              - Effect: Allow
                 Action: [ec2:CreateNetworkInterface, ec2:DescribeDhcpOptions, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface,
                          ec2:DescribeSubnets, ec2:DescribeSecurityGroups, ec2:DescribeVpcs]
                 Resource: "*"
@@ -848,6 +851,8 @@ Resources:
           - { Name: REPO_PREFIX, Value: !Ref EnvironmentName }
           - { Name: CLUSTER_NAME, Value: !Ref Cluster }
           - { Name: TARGET_GROUP_ARN, Value: !Ref StorefrontTargetGroup }
+          - { Name: VPC_ID, Value: !Ref Vpc }
+          - { Name: ALB_SECURITY_GROUP_ID, Value: !GetAtt AlbSecurityGroup.GroupId }
           - { Name: PRODUCTS_TABLE, Value: !Ref ProductsTable }
           - { Name: INVENTORY_TABLE, Value: !Ref InventoryTable }
           - { Name: CARTS_TABLE, Value: !Ref CartsTable }
@@ -974,6 +979,7 @@ Resources:
       - DynamoDbEndpoint
       - AlbToPodsIngress
       - HttpListener
+      - VpcOrigin  # deployer authorizes CloudFront's VPC origin security group on the ALB
       - CatalogPodIdentity
       - InventoryPodIdentity
       - CartPodIdentity

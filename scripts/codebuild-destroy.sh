@@ -5,6 +5,17 @@
 set -uo pipefail
 : "${AWS_REGION:?}" "${CLUSTER_NAME:?}"
 
+# Revoke the CloudFront VPC origin rule so CloudFront can delete its security group during teardown.
+if [ -n "${ALB_SECURITY_GROUP_ID:-}" ] && [ -n "${VPC_ID:-}" ]; then
+  CF_SG="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" \
+    "Name=group-name,Values=CloudFront-VPCOrigins-Service-SG" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null)"
+  if [ -n "$CF_SG" ] && [ "$CF_SG" != "None" ]; then
+    aws ec2 revoke-security-group-ingress --group-id "$ALB_SECURITY_GROUP_ID" --ip-permissions \
+      "IpProtocol=tcp,FromPort=80,ToPort=80,UserIdGroupPairs=[{GroupId=${CF_SG}}]" >/dev/null 2>&1 \
+      && echo "Revoked CloudFront VPC origin rule" || true
+  fi
+fi
+
 if ! aws eks describe-cluster --name "$CLUSTER_NAME" >/dev/null 2>&1; then
   echo "Cluster ${CLUSTER_NAME} not found - nothing to clean up"
   exit 0
