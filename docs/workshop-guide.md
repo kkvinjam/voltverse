@@ -42,7 +42,7 @@ Suggested hands-on labs, about 2 hours in total. Each lab works with the stack d
    - → `chat` (the Bedrock call, with `gen_ai.usage.*` token attributes)
    - → `execute_tool search_products`
    - → HTTP client span → `catalog` server span
-4. On the store dashboard, look at **Sparky: tool calls** and **end-to-end latency**. In CloudWatch Metrics, see `VoltVerse` → `gen_ai.client.token.usage` and the `bedrock-agentcore` namespace.
+4. On the store dashboard, look at **Sparky: tool calls** and **end-to-end latency**. In CloudWatch Metrics, see `VoltVerse` → `gen_ai.client.token.usage` (by model).
 5. Discussion: which tools dominate latency, and how would you cache them?
 
 ## Lab 4 — Break things and find out (30 min)

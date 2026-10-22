@@ -182,14 +182,14 @@ Notes for workshop operators:
 Everything uses **OpenTelemetry**, and all logs, metrics, and traces land in **Amazon CloudWatch**.
 - Every Python service runs the **AWS Distro for OpenTelemetry (ADOT) Python SDK** under `opentelemetry-instrument`, configured purely through `OTEL_*` environment variables.
 - The microservices export OTLP to the in-cluster ADOT Collector, which forwards to the **CloudWatch OTLP endpoints** (`xray.<region>.amazonaws.com/v1/traces`, `logs.<region>.amazonaws.com/v1/logs`) and writes metrics as EMF.
-- **Sparky** is configured as a GenAI agent for **CloudWatch GenAI Observability → Bedrock AgentCore**. AgentCore doesn't support agents that export through a collector, so the ADOT SDK (`AGENT_OBSERVABILITY_ENABLED=true`) sends Sparky's spans and logs directly to CloudWatch. It uses the agent log group `/aws/bedrock-agentcore/runtimes/<env>-sparky` and propagates `session.id`.
+- **Sparky** is configured as a GenAI agent for **CloudWatch GenAI Observability → Bedrock AgentCore**. AgentCore doesn't support agents that export through a collector, so the ADOT SDK (`AGENT_OBSERVABILITY_ENABLED=true`) sends Sparky's spans and logs directly to CloudWatch. It uses the agent log group `/aws/bedrock-agentcore/runtimes/<env>-sparky` and propagates `session.id`. Sparky's metrics go through the collector, like every other service's.
 - Strands emits GenAI semantic-convention spans for agent invocations, event-loop cycles, model calls, and tool calls.
 - **CloudWatch Transaction Search** must be on for the OTLP traces endpoint and the AgentCore view. The deployer enables it if it's off (`EnableTransactionSearch`, default `true`). It's an account-level setting and is left on when the stack is deleted.
 
 | Signal | Where |
 |---|---|
 | Traces | **CloudWatch → Transaction Search** (spans in `aws/spans`; query any span attribute, e.g. `voltverse.order.id`, `session.id`) and the trace map (`TraceMapUrl`) |
-| AI agent | **CloudWatch → GenAI Observability → Bedrock AgentCore** (`GenAIObservabilityUrl`): Sparky's sessions, traces, model and tool spans, token usage, latency, and errors. Logs are in `AgentLogGroup` and metrics in the `bedrock-agentcore` namespace. | Searchable annotations: `voltverse.order.id`, `voltverse.checkout.outcome`, `voltverse.payment.status`, `session.id`. |
+| AI agent | **CloudWatch → GenAI Observability → Bedrock AgentCore** (`GenAIObservabilityUrl`): Sparky's sessions, traces, model and tool spans, token usage, latency, and errors. Logs are in `AgentLogGroup`. | Searchable annotations: `voltverse.order.id`, `voltverse.checkout.outcome`, `voltverse.payment.status`, `session.id`. |
 | Metrics | CloudWatch namespace **`VoltVerse`** and the `DashboardUrl` dashboard: HTTP latency per service, checkout outcomes, revenue, payment outcomes, agent latency, tool usage, and `gen_ai.*` token usage |
 | Logs | `ApplicationLogGroup` (microservices, via the OTLP logs endpoint) and `AgentLogGroup` (Sparky). Every record carries the trace and span ids for log↔trace correlation. |
 | Anything else | Set `ExternalOtlpEndpoint`, or edit `k8s/10-otel-collector.yaml` |

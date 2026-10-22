@@ -75,8 +75,8 @@ ADOT collector ─ memory_limiter → resource(cloud.*, k8s.cluster.name) → ba
 Sparky pod (ADOT SDK, AGENT_OBSERVABILITY_ENABLED=true, Strands GenAI spans, session.id baggage)
    ├─ traces  → SigV4 → https://xray.<region>.amazonaws.com/v1/traces  ─┐  CloudWatch GenAI Observability
    ├─ logs    → SigV4 → https://logs.<region>.amazonaws.com/v1/logs    ─┤  → Bedrock AgentCore view
-   ├─ metrics → EMF (namespace bedrock-agentcore) in the agent log group ┘  (/aws/bedrock-agentcore/runtimes/<env>-sparky)
-   └─ metrics → OTLP → collector → VoltVerse namespace (store dashboard)
+   │                                                                     ┘  (/aws/bedrock-agentcore/runtimes/<env>-sparky)
+   └─ metrics → OTLP → collector → EMF, VoltVerse namespace (allow-listed dimensions)
 ```
 
 Why Sparky bypasses the collector: AgentCore observability for agents hosted outside the AgentCore runtime requires the ADOT SDK (or the ADOT Lambda layer). The ADOT Collector isn't supported for agent telemetry. W3C/X-Ray trace context still propagates on Sparky's tool calls, so its spans and the microservice spans share one trace id.

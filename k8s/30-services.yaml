@@ -503,15 +503,15 @@ spec:
           env:
             # Sparky is observed as a GenAI agent in CloudWatch GenAI Observability (Bedrock AgentCore view).
             # AgentCore requires the ADOT SDK to export directly (not via a collector): traces -> X-Ray OTLP
-            # endpoint (lands in aws/spans via Transaction Search), logs + EMF metrics -> the agent log group.
-            # Metrics also go to the collector so the VoltVerse dashboard keeps working.
+            # endpoint (lands in aws/spans via Transaction Search), logs -> the agent log group.
+            # Metrics go to the collector, whose allow-listed EMF dimensions keep CloudWatch metric counts (and cost)
+            # low; ADOT's awsemf exporter would publish every attribute combination as a separate custom metric.
             - { name: OTEL_SERVICE_NAME, value: sparky }
             - { name: AGENT_OBSERVABILITY_ENABLED, value: "true" }
             - { name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, value: "https://xray.${AWS_REGION}.amazonaws.com/v1/traces" }
             - { name: OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, value: "https://logs.${AWS_REGION}.amazonaws.com/v1/logs" }
-            - { name: OTEL_EXPORTER_OTLP_LOGS_HEADERS, value: "x-aws-log-group=${AGENT_LOG_GROUP},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore" }
+            - { name: OTEL_EXPORTER_OTLP_LOGS_HEADERS, value: "x-aws-log-group=${AGENT_LOG_GROUP},x-aws-log-stream=runtime-logs" }
             - { name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, value: "http://otel-collector.observability:4318/v1/metrics" }
-            - { name: OTEL_METRICS_EXPORTER, value: "otlp,awsemf" }
             - name: POD_NAME
               valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: NODE_NAME
