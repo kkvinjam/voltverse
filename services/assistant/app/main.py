@@ -177,21 +177,36 @@ async def chat_stream(req: ChatRequest):
 
     async def events() -> AsyncIterator[str]:
         start = time.perf_counter()
-        token = _with_session(session_id)
         seen_tools: set[str] = set()
-        stream = agent.stream_async(prompt, limits=AGENT_LIMITS).__aiter__()
-        pending = asyncio.ensure_future(stream.__anext__())
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def produce() -> None:
+            # The whole agent run happens inside this ONE task, so the OpenTelemetry context that
+            # Strands attaches for its spans is always detached in the same context (span nesting stays
+            # correct). The task inherits the request context plus the session.id baggage.
+            try:
+                async for event in agent.stream_async(prompt, limits=AGENT_LIMITS):
+                    await queue.put(("event", event))
+                await queue.put(("end", None))
+            except Exception as e:  # Bedrock throttling, access denied, model not enabled, ...
+                await queue.put(("error", e))
+
+        token = _with_session(session_id)
+        producer = asyncio.create_task(produce())
+        context.detach(token)
         try:
             while True:
-                done, _ = await asyncio.wait({pending}, timeout=HEARTBEAT_SECONDS)
-                if not done:
+                try:
+                    kind, event = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
                     yield ": ping\n\n"
                     continue
-                try:
-                    event = pending.result()
-                except StopAsyncIteration:
+                if kind == "end":
                     break
-                pending = asyncio.ensure_future(stream.__anext__())
+                if kind == "error":
+                    _failed(span, event)
+                    yield _sse("error", {"message": UNAVAILABLE})
+                    return
                 if "data" in event and isinstance(event["data"], str):
                     yield _sse("delta", {"text": event["data"]})
                 elif "current_tool_use" in event:
@@ -202,13 +217,9 @@ async def chat_stream(req: ChatRequest):
                         yield _sse("tool", {"name": tool["name"]})
             chat_counter.add(1, {"outcome": "success"})
             yield _sse("done", _summary(session_id, tools_used))
-        except Exception as e:
-            _failed(span, e)
-            yield _sse("error", {"message": UNAVAILABLE})
         finally:
-            if not pending.done():
-                pending.cancel()
-            context.detach(token)
+            if not producer.done():
+                producer.cancel()  # client disconnected
             chat_latency.record(time.perf_counter() - start, {"model": MODEL_ID})
 
     return StreamingResponse(events(), media_type="text/event-stream",

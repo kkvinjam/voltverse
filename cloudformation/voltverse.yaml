@@ -1095,7 +1095,7 @@ Resources:
                    ["...", "get_order_status"], ["...", "cancel_order"], ["...", "get_store_policies"]]}},
               {"type": "log", "x": 0, "y": 20, "width": 24, "height": 6,
                "properties": {"title": "Recent errors (all services)", "region": "${AWS::Region}", "view": "table",
-                 "query": "SOURCE '${AppLog}' | fields @timestamp, resource.service.name as service, body, trace_id\n| filter severity_number >= 17\n| sort @timestamp desc\n| limit 50"}}
+                 "query": "SOURCE '${AppLog}' | SOURCE '${AgentLog}' | fields @timestamp, resource.attributes.service.name as service, body, traceId\n| filter severityNumber >= 17\n| sort @timestamp desc\n| limit 50"}}
             ]
           }
         - AppLog: !Ref AppLogGroup

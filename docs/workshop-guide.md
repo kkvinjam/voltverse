@@ -27,8 +27,8 @@ Suggested hands-on labs, about 2 hours in total. Each lab works with the stack d
    - `checkout.authorize_payment` includes the simulated processor latency
 4. Copy the trace id and run this in **Logs Insights** against `ApplicationLogGroup`:
    ```
-   fields @timestamp, resource.service.name, body
-   | filter trace_id = "<trace id without the 1- prefix and dashes>"
+   fields @timestamp, resource.attributes.service.name, body
+   | filter traceId = "<trace id without the 1- prefix and dashes>"
    | sort @timestamp asc
    ```
 
