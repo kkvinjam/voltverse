@@ -1,0 +1,1075 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  VoltVerse - "Electronics, energized." A microservices e-commerce store on Amazon EKS Auto Mode with a
+  Strands Agents AI assistant (Amazon Bedrock) and OpenTelemetry instrumentation (X-Ray, CloudWatch).
+  Creates a VPC, EKS cluster, DynamoDB tables, ECR repositories, an internal ALB behind CloudFront
+  (VPC origin) and a CodeBuild project that builds and deploys the application.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: "Application source" }
+        Parameters: [SourceRepoUrl, SourceBranch, SourceS3Bucket, SourceS3Key]
+      - Label: { default: "AI assistant" }
+        Parameters: [BedrockModelId, AssistantRequestsPer5Min]
+      - Label: { default: "Observability" }
+        Parameters: [ExternalOtlpEndpoint, LogRetentionDays]
+      - Label: { default: "Access" }
+        Parameters: [ParticipantRoleArn, EnablePublicClusterEndpoint, PublicEndpointCidrs, AllowedViewerCidrs]
+      - Label: { default: "Infrastructure" }
+        Parameters: [EnvironmentName, VpcCidr, KubernetesVersion, DeployVersion]
+    ParameterLabels:
+      SourceRepoUrl: { default: "Git repository URL (public, HTTPS)" }
+      SourceS3Bucket: { default: "OR: S3 bucket holding a source zip" }
+      ParticipantRoleArn: { default: "IAM role granted kubectl admin access (optional)" }
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: voltverse
+    AllowedPattern: "^[a-z][a-z0-9-]{2,19}$"
+    Description: Lowercase prefix for every resource name. Must be unique per account and region.
+  SourceRepoUrl:
+    Type: String
+    Default: https://github.com/YOUR_ORG/voltverse.git
+    Description: Public Git URL of this repository. Ignored when SourceS3Bucket is set.
+  SourceBranch:
+    Type: String
+    Default: main
+  SourceS3Bucket:
+    Type: String
+    Default: ""
+    Description: Optional. Bucket containing a zip of this repository (see scripts/package-source.sh). Overrides the Git URL.
+  SourceS3Key:
+    Type: String
+    Default: voltverse-source.zip
+  BedrockModelId:
+    Type: String
+    Default: global.anthropic.claude-opus-5-5
+    Description: Bedrock model or inference profile id used by the Sparky agent (must be invocable in this region).
+  AssistantRequestsPer5Min:
+    Type: Number
+    Default: 1000
+    MinValue: 10
+    Description: WAF cap on total AI-assistant requests per 5 minutes across all visitors (Bedrock cost guard).
+  ExternalOtlpEndpoint:
+    Type: String
+    Default: ""
+    Description: Optional OTLP/HTTP endpoint (e.g. https://otlp.example.com) that receives a copy of all traces, metrics and logs.
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90]
+  ParticipantRoleArn:
+    Type: String
+    Default: ""
+    Description: Optional IAM role ARN (e.g. a workshop participant role) given cluster-admin access to EKS.
+  EnablePublicClusterEndpoint:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Expose the EKS API endpoint publicly (IAM-authenticated) so kubectl works from laptops/CloudShell.
+  PublicEndpointCidrs:
+    Type: String
+    Default: ""
+    Description: Comma-separated CIDRs allowed to reach the public EKS endpoint. Empty means any IP (when enabled).
+  AllowedViewerCidrs:
+    Type: String
+    Default: ""
+    Description: Optional comma-separated CIDRs allowed to use the store. Empty means the store is public.
+  VpcCidr:
+    Type: String
+    Default: 10.42.0.0/16
+    AllowedPattern: "^10\\.\\d{1,3}\\.0\\.0/16$"
+  KubernetesVersion:
+    Type: String
+    Default: ""
+    Description: Optional EKS version (e.g. 1.34). Empty uses the latest version EKS offers.
+  DeployVersion:
+    Type: String
+    Default: "1"
+    Description: Change this value and update the stack to rebuild and redeploy the application.
+
+Conditions:
+  UseS3Source: !Not [!Equals [!Ref SourceS3Bucket, ""]]
+  HasParticipantRole: !Not [!Equals [!Ref ParticipantRoleArn, ""]]
+  PublicEndpoint: !Equals [!Ref EnablePublicClusterEndpoint, "true"]
+  HasPublicEndpointCidrs: !And [!Condition PublicEndpoint, !Not [!Equals [!Ref PublicEndpointCidrs, ""]]]
+  HasAllowedViewers: !Not [!Equals [!Ref AllowedViewerCidrs, ""]]
+  HasK8sVersion: !Not [!Equals [!Ref KubernetesVersion, ""]]
+
+Resources:
+  # ---------------------------------------------------------------- Networking
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{ Key: Name, Value: !Ref EnvironmentName }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Ref EnvironmentName }]
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway }
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 16, 12]]
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-public-1" }, { Key: kubernetes.io/role/elb, Value: "1" }]
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 16, 12]]
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-public-2" }, { Key: kubernetes.io/role/elb, Value: "1" }]
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [8, !Cidr [!Ref VpcCidr, 16, 12]]
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-private-1" }, { Key: kubernetes.io/role/internal-elb, Value: "1" }]
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [9, !Cidr [!Ref VpcCidr, 16, 12]]
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-private-2" }, { Key: kubernetes.io/role/internal-elb, Value: "1" }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-public" }]
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties: { RouteTableId: !Ref PublicRouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway }
+
+  PublicSubnet1Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnet1, RouteTableId: !Ref PublicRouteTable }
+
+  PublicSubnet2Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnet2, RouteTableId: !Ref PublicRouteTable }
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties: { Domain: vpc }
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags: [{ Key: Name, Value: !Ref EnvironmentName }]
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-private" }]
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties: { RouteTableId: !Ref PrivateRouteTable, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref NatGateway }
+
+  PrivateSubnet1Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnet1, RouteTableId: !Ref PrivateRouteTable }
+
+  PrivateSubnet2Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnet2, RouteTableId: !Ref PrivateRouteTable }
+
+  DynamoDbEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref PrivateRouteTable]
+
+  # ---------------------------------------------------------------- Security groups
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Internal ALB - HTTP from inside the VPC only (CloudFront VPC origin)
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: !Ref VpcCidr, Description: CloudFront VPC origin ENIs }
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-alb" }]
+
+  DeployerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CodeBuild deployer (egress only)
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-deployer" }]
+
+  ControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Additional EKS control plane SG - API access from the deployer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, SourceSecurityGroupId: !Ref DeployerSecurityGroup, Description: CodeBuild kubectl }
+      Tags: [{ Key: Name, Value: !Sub "${EnvironmentName}-control-plane" }]
+
+  AlbToPodsIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt Cluster.ClusterSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !Ref AlbSecurityGroup
+      Description: ALB to storefront pods
+
+  # ---------------------------------------------------------------- EKS Auto Mode cluster
+  ClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEKSClusterPolicy
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEKSComputePolicy
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEKSBlockStoragePolicy
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEKSLoadBalancingPolicy
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEKSNetworkingPolicy
+
+  NodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
+
+  ClusterLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/eks/${EnvironmentName}-eks/cluster
+      RetentionInDays: !Ref LogRetentionDays
+
+  Cluster:
+    Type: AWS::EKS::Cluster
+    DependsOn: ClusterLogGroup
+    Properties:
+      Name: !Sub ${EnvironmentName}-eks
+      Version: !If [HasK8sVersion, !Ref KubernetesVersion, !Ref AWS::NoValue]
+      RoleArn: !GetAtt ClusterRole.Arn
+      BootstrapSelfManagedAddons: false
+      AccessConfig:
+        AuthenticationMode: API
+        BootstrapClusterCreatorAdminPermissions: false
+      ComputeConfig:
+        Enabled: true
+        NodePools: [general-purpose, system]
+        NodeRoleArn: !GetAtt NodeRole.Arn
+      KubernetesNetworkConfig:
+        ElasticLoadBalancing: { Enabled: true }
+      StorageConfig:
+        BlockStorage: { Enabled: true }
+      UpgradePolicy:
+        SupportType: STANDARD
+      ResourcesVpcConfig:
+        SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+        SecurityGroupIds: [!Ref ControlPlaneSecurityGroup]
+        EndpointPrivateAccess: true
+        EndpointPublicAccess: !If [PublicEndpoint, true, false]
+        PublicAccessCidrs: !If [HasPublicEndpointCidrs, !Split [",", !Ref PublicEndpointCidrs], !Ref AWS::NoValue]
+      Logging:
+        ClusterLogging:
+          EnabledTypes: [{ Type: api }, { Type: audit }]
+      Tags: [{ Key: app, Value: voltverse }]
+
+  DeployerAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref Cluster
+      PrincipalArn: !GetAtt DeployerRole.Arn
+      AccessPolicies:
+        - PolicyArn: !Sub arn:${AWS::Partition}:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+          AccessScope: { Type: cluster }
+
+  ParticipantAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Condition: HasParticipantRole
+    Properties:
+      ClusterName: !Ref Cluster
+      PrincipalArn: !Ref ParticipantRoleArn
+      AccessPolicies:
+        - PolicyArn: !Sub arn:${AWS::Partition}:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+          AccessScope: { Type: cluster }
+
+  # ---------------------------------------------------------------- Data
+  ProductsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    Properties:
+      TableName: !Sub ${EnvironmentName}-products
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: productId, AttributeType: S }]
+      KeySchema: [{ AttributeName: productId, KeyType: HASH }]
+      SSESpecification: { SSEEnabled: true }
+
+  InventoryTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    Properties:
+      TableName: !Sub ${EnvironmentName}-inventory
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: pk, AttributeType: S }]
+      KeySchema: [{ AttributeName: pk, KeyType: HASH }]
+      SSESpecification: { SSEEnabled: true }
+
+  CartsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    Properties:
+      TableName: !Sub ${EnvironmentName}-carts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: cartId, AttributeType: S }]
+      KeySchema: [{ AttributeName: cartId, KeyType: HASH }]
+      TimeToLiveSpecification: { AttributeName: expiresAt, Enabled: true }
+      SSESpecification: { SSEEnabled: true }
+
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    Properties:
+      TableName: !Sub ${EnvironmentName}-orders
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: orderId, AttributeType: S }]
+      KeySchema: [{ AttributeName: orderId, KeyType: HASH }]
+      SSESpecification: { SSEEnabled: true }
+
+  PaymentsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    Properties:
+      TableName: !Sub ${EnvironmentName}-payments
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: paymentId, AttributeType: S }
+        - { AttributeName: orderId, AttributeType: S }
+      KeySchema: [{ AttributeName: paymentId, KeyType: HASH }]
+      GlobalSecondaryIndexes:
+        - IndexName: orderId-index
+          KeySchema: [{ AttributeName: orderId, KeyType: HASH }]
+          Projection: { ProjectionType: ALL }
+      SSESpecification: { SSEEnabled: true }
+
+  # ---------------------------------------------------------------- Container registries
+  CatalogRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/catalog", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+  InventoryRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/inventory", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+  CartRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/cart", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+  CheckoutRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/checkout", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+  PaymentRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/payment", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+  OrdersRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/orders", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+  AssistantRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/assistant", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+  StorefrontRepository:
+    Type: AWS::ECR::Repository
+    Properties: { RepositoryName: !Sub "${EnvironmentName}/storefront", EmptyOnDelete: true, ImageScanningConfiguration: { ScanOnPush: true } }
+
+  # ---------------------------------------------------------------- Telemetry destinations
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/voltverse/${EnvironmentName}/application
+      RetentionInDays: !Ref LogRetentionDays
+
+  MetricsLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/voltverse/${EnvironmentName}/metrics
+      RetentionInDays: !Ref LogRetentionDays
+
+  # ---------------------------------------------------------------- Workload IAM (EKS Pod Identity)
+  CatalogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:Scan, dynamodb:GetItem, dynamodb:Query]
+                Resource: !GetAtt ProductsTable.Arn
+
+  InventoryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:ConditionCheckItem]
+                Resource: !GetAtt InventoryTable.Arn
+
+  CartRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem]
+                Resource: !GetAtt CartsTable.Arn
+
+  OrdersRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+                Resource: !GetAtt OrdersTable.Arn
+
+  PaymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: dynamodb
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
+                Resource: [!GetAtt PaymentsTable.Arn, !Sub "${PaymentsTable.Arn}/index/*"]
+
+  AssistantRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: bedrock
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+
+  CollectorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: telemetry
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords, xray:GetSamplingRules, xray:GetSamplingTargets]
+                Resource: "*"
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams, logs:PutRetentionPolicy]
+                Resource:
+                  - !GetAtt AppLogGroup.Arn
+                  - !GetAtt MetricsLogGroup.Arn
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/voltverse/${EnvironmentName}/*:log-stream:*"
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: "*"
+
+  CatalogPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties: { ClusterName: !Ref Cluster, Namespace: voltverse, ServiceAccount: catalog, RoleArn: !GetAtt CatalogRole.Arn }
+  InventoryPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties: { ClusterName: !Ref Cluster, Namespace: voltverse, ServiceAccount: inventory, RoleArn: !GetAtt InventoryRole.Arn }
+  CartPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties: { ClusterName: !Ref Cluster, Namespace: voltverse, ServiceAccount: cart, RoleArn: !GetAtt CartRole.Arn }
+  OrdersPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties: { ClusterName: !Ref Cluster, Namespace: voltverse, ServiceAccount: orders, RoleArn: !GetAtt OrdersRole.Arn }
+  PaymentPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties: { ClusterName: !Ref Cluster, Namespace: voltverse, ServiceAccount: payment, RoleArn: !GetAtt PaymentRole.Arn }
+  AssistantPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties: { ClusterName: !Ref Cluster, Namespace: voltverse, ServiceAccount: assistant, RoleArn: !GetAtt AssistantRole.Arn }
+  CollectorPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties: { ClusterName: !Ref Cluster, Namespace: observability, ServiceAccount: otel-collector, RoleArn: !GetAtt CollectorRole.Arn }
+
+  # ---------------------------------------------------------------- Ingress: CloudFront -> VPC origin -> internal ALB
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${EnvironmentName}-alb
+      Type: application
+      Scheme: internal
+      Subnets: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroups: [!Ref AlbSecurityGroup]
+      LoadBalancerAttributes:
+        - { Key: idle_timeout.timeout_seconds, Value: "180" }
+        - { Key: routing.http.drop_invalid_header_fields.enabled, Value: "true" }
+
+  StorefrontTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: Cluster  # deleted before the cluster, so the Auto Mode controller can deregister cleanly
+    Properties:
+      VpcId: !Ref Vpc
+      TargetType: ip
+      Protocol: HTTP
+      Port: 8080
+      HealthCheckPath: /healthz
+      HealthCheckIntervalSeconds: 10
+      HealthyThresholdCount: 2
+      Matcher: { HttpCode: "200" }
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: "15" }
+      Tags:
+        # Lets the EKS Auto Mode load balancing controller manage this target group (TargetGroupBinding).
+        - { Key: eks:eks-cluster-name, Value: !Sub "${EnvironmentName}-eks" }
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref StorefrontTargetGroup }]
+
+  ViewerAllowList:
+    Type: AWS::WAFv2::IPSet
+    Condition: HasAllowedViewers
+    Properties:
+      Name: !Sub ${EnvironmentName}-allowed-viewers
+      Scope: REGIONAL
+      IPAddressVersion: IPV4
+      Addresses: !Split [",", !Ref AllowedViewerCidrs]
+
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub ${EnvironmentName}-storefront
+      Scope: REGIONAL
+      DefaultAction: { Allow: {} }
+      VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: !Sub "${EnvironmentName}-waf" }
+      Rules:
+        - !If
+          - HasAllowedViewers
+          - Name: allowed-viewers-only
+            Priority: 0
+            Action: { Block: {} }
+            Statement:
+              NotStatement:
+                Statement:
+                  IPSetReferenceStatement:
+                    Arn: !GetAtt ViewerAllowList.Arn
+                    # CloudFront appends the real viewer IP as the last X-Forwarded-For entry.
+                    IPSetForwardedIPConfig: { HeaderName: X-Forwarded-For, FallbackBehavior: NO_MATCH, Position: LAST }
+            VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: allowed-viewers-only }
+          - !Ref AWS::NoValue
+        - Name: assistant-global-rate-limit
+          Priority: 1
+          Action: { Block: {} }
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref AssistantRequestsPer5Min
+              EvaluationWindowSec: 300
+              AggregateKeyType: CONSTANT
+              ScopeDownStatement:
+                ByteMatchStatement:
+                  FieldToMatch: { UriPath: {} }
+                  PositionalConstraint: STARTS_WITH
+                  SearchString: /api/assistant/
+                  TextTransformations: [{ Priority: 0, Type: NONE }]
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: assistant-global-rate-limit }
+        - Name: aws-common
+          Priority: 2
+          OverrideAction: { None: {} }
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              RuleActionOverrides:
+                # chat transcripts can exceed the 8 KB default body limit; nginx caps bodies at 64 KB
+                - { Name: SizeRestrictions_BODY, ActionToUse: { Count: {} } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: aws-common }
+        - Name: aws-known-bad-inputs
+          Priority: 3
+          OverrideAction: { None: {} }
+          Statement:
+            ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesKnownBadInputsRuleSet }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: aws-known-bad-inputs }
+
+  WebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Ref LoadBalancer
+      WebACLArn: !GetAtt WebAcl.Arn
+
+  VpcOrigin:
+    Type: AWS::CloudFront::VpcOrigin
+    DependsOn: HttpListener
+    Properties:
+      VpcOriginEndpointConfig:
+        Name: !Sub ${EnvironmentName}-alb
+        Arn: !Ref LoadBalancer
+        HTTPPort: 80
+        HTTPSPort: 443
+        OriginProtocolPolicy: http-only
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "VoltVerse storefront (${EnvironmentName})"
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: storefront
+            DomainName: !GetAtt LoadBalancer.DNSName
+            VpcOriginConfig:
+              VpcOriginId: !GetAtt VpcOrigin.Id
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: storefront
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
+          OriginRequestPolicyId: 33f36d7e-f396-46d9-90e0-52428a34d9dc  # Managed-AllViewerAndCloudFrontHeaders-2022-06
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
+        CacheBehaviors:
+          - PathPattern: /assets/*
+            TargetOriginId: storefront
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6        # Managed-CachingOptimized
+            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # ---------------------------------------------------------------- Deployer (CodeBuild, triggered by a custom resource)
+  DeployerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/codebuild/${EnvironmentName}-deployer
+      RetentionInDays: !Ref LogRetentionDays
+
+  DeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: codebuild.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: deployer
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "${DeployerLogGroup.Arn}"
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:BatchGetImage, ecr:GetDownloadUrlForLayer, ecr:InitiateLayerUpload,
+                         ecr:UploadLayerPart, ecr:CompleteLayerUpload, ecr:PutImage]
+                Resource: !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EnvironmentName}/*"
+              - Effect: Allow
+                Action: eks:DescribeCluster
+                Resource: !Sub "arn:${AWS::Partition}:eks:${AWS::Region}:${AWS::AccountId}:cluster/${EnvironmentName}-eks"
+              - Effect: Allow
+                Action: [dynamodb:PutItem, dynamodb:BatchWriteItem, dynamodb:DescribeTable]
+                Resource: [!GetAtt ProductsTable.Arn, !GetAtt InventoryTable.Arn]
+              - Effect: Allow
+                Action: elasticloadbalancing:DescribeTargetHealth
+                Resource: "*"
+              - Effect: Allow
+                Action: [ec2:CreateNetworkInterface, ec2:DescribeDhcpOptions, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface,
+                         ec2:DescribeSubnets, ec2:DescribeSecurityGroups, ec2:DescribeVpcs]
+                Resource: "*"
+              - Effect: Allow
+                Action: ec2:CreateNetworkInterfacePermission
+                Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+                Condition:
+                  StringEquals: { ec2:AuthorizedService: codebuild.amazonaws.com }
+                  ArnEquals:
+                    ec2:Subnet:
+                      - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${PrivateSubnet1}"
+                      - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${PrivateSubnet2}"
+              - !If
+                - UseS3Source
+                - Effect: Allow
+                  Action: s3:GetObject
+                  Resource: !Sub "arn:${AWS::Partition}:s3:::${SourceS3Bucket}/${SourceS3Key}"
+                - !Ref AWS::NoValue
+
+  DeployerProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${EnvironmentName}-deployer
+      Description: Builds VoltVerse images and deploys them to EKS
+      ServiceRole: !GetAtt DeployerRole.Arn
+      TimeoutInMinutes: 60
+      Artifacts: { Type: NO_ARTIFACTS }
+      LogsConfig:
+        CloudWatchLogs: { Status: ENABLED, GroupName: !Ref DeployerLogGroup }
+      VpcConfig:
+        VpcId: !Ref Vpc
+        Subnets: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+        SecurityGroupIds: [!Ref DeployerSecurityGroup]
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: true  # required for docker builds
+        EnvironmentVariables:
+          - { Name: ACTION, Value: deploy }
+          - { Name: ACCOUNT_ID, Value: !Ref AWS::AccountId }
+          - { Name: ENVIRONMENT_NAME, Value: !Ref EnvironmentName }
+          - { Name: REPO_PREFIX, Value: !Ref EnvironmentName }
+          - { Name: CLUSTER_NAME, Value: !Ref Cluster }
+          - { Name: TARGET_GROUP_ARN, Value: !Ref StorefrontTargetGroup }
+          - { Name: PRODUCTS_TABLE, Value: !Ref ProductsTable }
+          - { Name: INVENTORY_TABLE, Value: !Ref InventoryTable }
+          - { Name: CARTS_TABLE, Value: !Ref CartsTable }
+          - { Name: ORDERS_TABLE, Value: !Ref OrdersTable }
+          - { Name: PAYMENTS_TABLE, Value: !Ref PaymentsTable }
+          - { Name: APP_LOG_GROUP, Value: !Ref AppLogGroup }
+          - { Name: METRICS_LOG_GROUP, Value: !Ref MetricsLogGroup }
+          - { Name: BEDROCK_MODEL_ID, Value: !Ref BedrockModelId }
+          - { Name: EXTERNAL_OTLP_ENDPOINT, Value: !Ref ExternalOtlpEndpoint }
+          - { Name: SOURCE_REPO_URL, Value: !Ref SourceRepoUrl }
+          - { Name: SOURCE_BRANCH, Value: !Ref SourceBranch }
+          - { Name: SOURCE_S3_URI, Value: !If [UseS3Source, !Sub "s3://${SourceS3Bucket}/${SourceS3Key}", ""] }
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: |
+          version: 0.2
+          env:
+            shell: bash
+          phases:
+            build:
+              commands:
+                - |
+                  set -uo pipefail
+                  respond() {
+                    [ -n "${CFN_RESPONSE_URL:-}" ] || return 0
+                    body="$(STATUS="$1" REASON="$2" python3 -c 'import json,os; e=os.environ; print(json.dumps({"Status": e["STATUS"], "Reason": e["REASON"][:900], "PhysicalResourceId": e.get("CFN_PHYSICAL_ID") or "voltverse-deployment", "StackId": e["CFN_STACK_ID"], "RequestId": e["CFN_REQUEST_ID"], "LogicalResourceId": e["CFN_LOGICAL_ID"], "Data": {}}))')"
+                    curl -sS -X PUT -H "Content-Type:" --data-binary "$body" "$CFN_RESPONSE_URL" && echo "Reported $1 to CloudFormation"
+                  }
+                  rc=1
+                  rm -rf /tmp/src && mkdir -p /tmp/src
+                  if [ -n "${SOURCE_S3_URI:-}" ]; then
+                    aws s3 cp "$SOURCE_S3_URI" /tmp/src.zip && unzip -q /tmp/src.zip -d /tmp/src
+                  else
+                    git clone --depth 1 --branch "$SOURCE_BRANCH" "$SOURCE_REPO_URL" /tmp/src
+                  fi
+                  script="$(find /tmp/src -maxdepth 3 -path "*/scripts/codebuild-${ACTION}.sh" | head -n 1)"
+                  if [ -n "$script" ]; then
+                    bash "$script"; rc=$?
+                  else
+                    echo "Could not find scripts/codebuild-${ACTION}.sh in the source - check SourceRepoUrl / SourceS3Bucket"
+                  fi
+                  if [ "$ACTION" = "destroy" ]; then
+                    respond SUCCESS "Cleanup finished (exit ${rc})"; exit 0
+                  elif [ "$rc" -eq 0 ]; then
+                    respond SUCCESS "Application deployed"
+                  else
+                    respond FAILED "Deployment failed - see CodeBuild build ${CODEBUILD_BUILD_ID}"
+                  fi
+                  exit "$rc"
+
+  DeployTriggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: start-build
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: codebuild:StartBuild
+                Resource: !GetAtt DeployerProject.Arn
+
+  DeployTriggerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EnvironmentName}-deploy-trigger
+      RetentionInDays: !Ref LogRetentionDays
+
+  DeployTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-deploy-trigger
+      LoggingConfig: { LogGroup: !Ref DeployTriggerLogGroup }
+      Description: Starts the VoltVerse CodeBuild deployer; the build reports back to CloudFormation itself.
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt DeployTriggerRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          codebuild = boto3.client("codebuild")
+
+          def handler(event, context):
+              action = "destroy" if event["RequestType"] == "Delete" else "deploy"
+              physical_id = event.get("PhysicalResourceId") or f"{event['ResourceProperties']['ProjectName']}-deployment"
+              env = {
+                  "ACTION": action,
+                  "CFN_RESPONSE_URL": event["ResponseURL"],
+                  "CFN_STACK_ID": event["StackId"],
+                  "CFN_REQUEST_ID": event["RequestId"],
+                  "CFN_LOGICAL_ID": event["LogicalResourceId"],
+                  "CFN_PHYSICAL_ID": physical_id,
+              }
+              try:
+                  build = codebuild.start_build(
+                      projectName=event["ResourceProperties"]["ProjectName"],
+                      environmentVariablesOverride=[{"name": k, "value": v, "type": "PLAINTEXT"} for k, v in env.items()],
+                  )
+                  print(f"Started {action} build {build['build']['id']}")
+              except Exception as e:  # never block stack deletion on cleanup problems
+                  print(f"Failed to start build: {e}")
+                  status = cfnresponse.SUCCESS if action == "destroy" else cfnresponse.FAILED
+                  cfnresponse.send(event, context, status, {}, physical_id, reason=str(e)[:500])
+
+  Deployment:
+    Type: Custom::VoltVerseDeployment
+    DependsOn:
+      - DeployerAccessEntry
+      - PrivateDefaultRoute
+      - PrivateSubnet1Routes
+      - PrivateSubnet2Routes
+      - DynamoDbEndpoint
+      - AlbToPodsIngress
+      - HttpListener
+      - CatalogPodIdentity
+      - InventoryPodIdentity
+      - CartPodIdentity
+      - OrdersPodIdentity
+      - PaymentPodIdentity
+      - AssistantPodIdentity
+      - CollectorPodIdentity
+      - CatalogRepository
+      - InventoryRepository
+      - CartRepository
+      - CheckoutRepository
+      - PaymentRepository
+      - OrdersRepository
+      - AssistantRepository
+      - StorefrontRepository
+    Properties:
+      ServiceToken: !GetAtt DeployTriggerFunction.Arn
+      ServiceTimeout: 3600
+      ProjectName: !Ref DeployerProject
+      # Changing any of these re-runs the deployment on stack update.
+      DeployVersion: !Ref DeployVersion
+      BedrockModelId: !Ref BedrockModelId
+      ExternalOtlpEndpoint: !Ref ExternalOtlpEndpoint
+      Source: !If [UseS3Source, !Sub "s3://${SourceS3Bucket}/${SourceS3Key}", !Sub "${SourceRepoUrl}#${SourceBranch}"]
+
+  # ---------------------------------------------------------------- Dashboard
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${EnvironmentName}-store
+      DashboardBody: !Sub
+        - |
+          {
+            "widgets": [
+              {"type": "text", "x": 0, "y": 0, "width": 24, "height": 2,
+               "properties": {"markdown": "## ⚡ VoltVerse - business & service health\nTraces: [X-Ray trace map](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map) · Logs: `${AppLog}` · Metrics namespace: `VoltVerse`"}},
+              {"type": "metric", "x": 0, "y": 2, "width": 8, "height": 6,
+               "properties": {"title": "Checkout attempts by outcome", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
+                 "metrics": [
+                   ["VoltVerse", "voltverse.checkout.attempts", "service.name", "checkout", "outcome", "success"],
+                   ["...", "payment_declined"], ["...", "payment_error"], ["...", "out_of_stock"], ["...", "order_error"]]}},
+              {"type": "metric", "x": 8, "y": 2, "width": 8, "height": 6,
+               "properties": {"title": "Revenue (USD / minute)", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries",
+                 "metrics": [["VoltVerse", "voltverse.checkout.revenue", "service.name", "checkout"]]}},
+              {"type": "metric", "x": 16, "y": 2, "width": 8, "height": 6,
+               "properties": {"title": "Payment authorizations", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
+                 "metrics": [
+                   ["VoltVerse", "voltverse.payment.authorizations", "service.name", "payment", "outcome", "approved"],
+                   ["...", "card_declined"], ["...", "insufficient_funds"], ["...", "processor_error"]]}},
+              {"type": "metric", "x": 0, "y": 8, "width": 12, "height": 6,
+               "properties": {"title": "Average server latency by service (s)", "region": "${AWS::Region}", "stat": "Average", "period": 60, "view": "timeSeries",
+                 "metrics": [
+                   ["VoltVerse", "http.server.request.duration", "service.name", "catalog"], ["...", "inventory"], ["...", "cart"],
+                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "assistant"]]}},
+              {"type": "metric", "x": 12, "y": 8, "width": 12, "height": 6,
+               "properties": {"title": "Requests by service", "region": "${AWS::Region}", "stat": "SampleCount", "period": 60, "view": "timeSeries", "stacked": true,
+                 "metrics": [
+                   ["VoltVerse", "http.server.request.duration", "service.name", "catalog"], ["...", "inventory"], ["...", "cart"],
+                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "assistant"]]}},
+              {"type": "metric", "x": 0, "y": 14, "width": 8, "height": 6,
+               "properties": {"title": "Sparky: chats by outcome", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
+                 "metrics": [
+                   ["VoltVerse", "voltverse.assistant.chats", "service.name", "assistant", "outcome", "success"], ["...", "error"]]}},
+              {"type": "metric", "x": 8, "y": 14, "width": 8, "height": 6,
+               "properties": {"title": "Sparky: end-to-end latency (s)", "region": "${AWS::Region}", "period": 60, "view": "timeSeries",
+                 "metrics": [
+                   ["VoltVerse", "voltverse.assistant.latency", "service.name", "assistant", {"stat": "Average"}],
+                   ["...", {"stat": "Maximum"}]]}},
+              {"type": "metric", "x": 16, "y": 14, "width": 8, "height": 6,
+               "properties": {"title": "Sparky: tool calls", "region": "${AWS::Region}", "stat": "Sum", "period": 300, "view": "bar",
+                 "metrics": [
+                   ["VoltVerse", "voltverse.assistant.tool_calls", "service.name", "assistant", "tool", "search_products"],
+                   ["...", "get_product_details"], ["...", "check_stock"], ["...", "add_to_cart"], ["...", "view_cart"],
+                   ["...", "get_order_status"], ["...", "cancel_order"], ["...", "get_store_policies"]]}},
+              {"type": "log", "x": 0, "y": 20, "width": 24, "height": 6,
+               "properties": {"title": "Recent errors (all services)", "region": "${AWS::Region}", "view": "table",
+                 "query": "SOURCE '${AppLog}' | fields @timestamp, resource.service.name as service, body, trace_id\n| filter severity_number >= 17\n| sort @timestamp desc\n| limit 50"}}
+            ]
+          }
+        - AppLog: !Ref AppLogGroup
+
+Outputs:
+  StorefrontUrl:
+    Description: The VoltVerse store (ready once the stack reaches CREATE_COMPLETE)
+    Value: !Sub https://${Distribution.DomainName}
+  ClusterName:
+    Value: !Ref Cluster
+  KubeconfigCommand:
+    Description: Configure kubectl (requires EnablePublicClusterEndpoint=true or network access to the VPC)
+    Value: !Sub aws eks update-kubeconfig --name ${Cluster} --region ${AWS::Region}
+  DeployerProject:
+    Description: Re-run this CodeBuild project to redeploy the application
+    Value: !Ref DeployerProject
+  DashboardUrl:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards/dashboard/${EnvironmentName}-store
+  TraceMapUrl:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map
+  ApplicationLogGroup:
+    Value: !Ref AppLogGroup

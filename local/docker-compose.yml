@@ -1,0 +1,117 @@
+# Run the whole store locally:  docker compose -f local/docker-compose.yml up --build
+# (Finch users: finch compose -f local/docker-compose.yml up --build)
+# Only the storefront is published, and only on 127.0.0.1:8080. Everything else stays on the compose network.
+# Sparky needs AWS credentials with Bedrock access: they are read from ~/.aws (AWS_PROFILE selects a profile).
+
+x-service: &service
+  build:
+    context: ../services
+    dockerfile: python.Dockerfile
+  restart: unless-stopped
+  depends_on:
+    bootstrap: { condition: service_completed_successfully }
+    otel-collector: { condition: service_started }
+  environment: &env
+    AWS_REGION: us-west-2
+    AWS_ACCESS_KEY_ID: local
+    AWS_SECRET_ACCESS_KEY: local
+    DYNAMODB_ENDPOINT: http://dynamodb:8000
+    PRODUCTS_TABLE: voltverse-products
+    INVENTORY_TABLE: voltverse-inventory
+    CARTS_TABLE: voltverse-carts
+    ORDERS_TABLE: voltverse-orders
+    PAYMENTS_TABLE: voltverse-payments
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+    OTEL_TRACES_EXPORTER: otlp
+    OTEL_METRICS_EXPORTER: otlp
+    OTEL_LOGS_EXPORTER: otlp
+    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+    OTEL_PYTHON_ID_GENERATOR: xray
+    OTEL_PROPAGATORS: tracecontext,baggage,xray
+    OTEL_SEMCONV_STABILITY_OPT_IN: http,gen_ai_latest_experimental
+    OTEL_PYTHON_EXCLUDED_URLS: health,ready
+    OTEL_METRIC_EXPORT_INTERVAL: "15000"
+    OTEL_RESOURCE_ATTRIBUTES: service.namespace=voltverse,deployment.environment.name=local
+
+services:
+  dynamodb:
+    image: public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:2.6.1
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+
+  bootstrap:
+    image: public.ecr.aws/docker/library/python:3.12-slim
+    depends_on: [dynamodb]
+    volumes: ["..:/repo:ro"]
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    command: ["sh", "-c", "pip install -q boto3 && python /repo/local/bootstrap.py"]
+
+  otel-collector:
+    image: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.3
+    command: ["--config=/conf/config.yaml"]
+    volumes: ["./otel-collector-local.yaml:/conf/config.yaml:ro"]
+
+  catalog:
+    <<: *service
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: catalog } }
+    environment:
+      <<: *env
+      OTEL_SERVICE_NAME: catalog
+
+  inventory:
+    <<: *service
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: inventory } }
+    environment:
+      <<: *env
+      OTEL_SERVICE_NAME: inventory
+
+  cart:
+    <<: *service
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: cart } }
+    environment:
+      <<: *env
+      OTEL_SERVICE_NAME: cart
+
+  checkout:
+    <<: *service
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: checkout } }
+    environment:
+      <<: *env
+      OTEL_SERVICE_NAME: checkout
+
+  payment:
+    <<: *service
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: payment } }
+    environment:
+      <<: *env
+      OTEL_SERVICE_NAME: payment
+
+  orders:
+    <<: *service
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: orders } }
+    environment:
+      <<: *env
+      OTEL_SERVICE_NAME: orders
+
+  assistant:
+    <<: *service
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: assistant } }
+    environment:
+      <<: *env
+      OTEL_SERVICE_NAME: assistant
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-global.anthropic.claude-opus-5-5}
+      AWS_PROFILE: ${AWS_PROFILE:-default}
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      HOME: /tmp
+      AWS_CONFIG_FILE: /aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /aws/credentials
+    volumes: ["${HOME}/.aws:/aws:ro"]
+
+  storefront:
+    build: ../services/storefront
+    depends_on: [catalog, inventory, cart, checkout, orders, assistant]
+    ports: ["127.0.0.1:8080:8080"]

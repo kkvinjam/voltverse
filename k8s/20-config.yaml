@@ -1,0 +1,43 @@
+# Shared configuration for every VoltVerse workload (rendered at deploy time).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voltverse-config
+  namespace: voltverse
+data:
+  AWS_REGION: "${AWS_REGION}"
+  PRODUCTS_TABLE: "${PRODUCTS_TABLE}"
+  INVENTORY_TABLE: "${INVENTORY_TABLE}"
+  CARTS_TABLE: "${CARTS_TABLE}"
+  ORDERS_TABLE: "${ORDERS_TABLE}"
+  PAYMENTS_TABLE: "${PAYMENTS_TABLE}"
+  BEDROCK_MODEL_ID: "${BEDROCK_MODEL_ID}"
+  HOME: /tmp
+  # --- OpenTelemetry (standard OTEL_* variables, read by opentelemetry-instrument) ---
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_LOGS_EXPORTER: "otlp"
+  OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+  OTEL_PYTHON_ID_GENERATOR: "xray"
+  OTEL_PROPAGATORS: "tracecontext,baggage,xray"
+  OTEL_TRACES_SAMPLER: "parentbased_always_on"
+  OTEL_METRIC_EXPORT_INTERVAL: "30000"
+  # stable HTTP metric names + latest GenAI semantic conventions for Strands agent spans
+  OTEL_SEMCONV_STABILITY_OPT_IN: "http,gen_ai_latest_experimental"
+  OTEL_PYTHON_EXCLUDED_URLS: "health,ready"
+  OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: "urllib,urllib3"
+---
+# Fault-injection knobs for observability exercises. Edit and `kubectl rollout restart` to apply.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voltverse-chaos
+  namespace: voltverse
+data:
+  CHAOS_LATENCY_MS: "0"
+  CHAOS_ERROR_RATE: "0"
+  PAYMENT_FAILURE_RATE: "0"
+  PAYMENT_LATENCY_MS: "0"
+  ORDER_TIMELINE_SCALE: "1"

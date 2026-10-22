@@ -1,0 +1,1015 @@
+[
+  {
+    "productId": "vv-phone-001",
+    "name": "Nova X1 Pro",
+    "brand": "Nova",
+    "category": "smartphones",
+    "price": 999.0,
+    "compareAtPrice": 1099.0,
+    "rating": 4.8,
+    "reviewCount": 2314,
+    "featured": true,
+    "initialStock": 120,
+    "shortDescription": "6.7\" ProMotion OLED, triple 50MP camera, all-day battery.",
+    "description": "The Nova X1 Pro pairs a buttery 120Hz LTPO OLED display with a triple 50MP camera system and an efficient 3nm chip. Titanium frame, IP68 water resistance and 45W fast charging make it a flagship you can rely on.",
+    "specs": {
+      "Display": "6.7\" LTPO OLED, 120Hz",
+      "Chip": "Nova N3 (3nm)",
+      "Storage": "256 GB",
+      "Camera": "50MP wide + 50MP ultra-wide + 50MP 5x tele",
+      "Battery": "5000 mAh, 45W wired",
+      "Water resistance": "IP68"
+    },
+    "art": {
+      "from": "#6C5CE7",
+      "to": "#00D1FF"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "5g",
+      "flagship",
+      "camera"
+    ]
+  },
+  {
+    "productId": "vv-phone-002",
+    "name": "Nova X1",
+    "brand": "Nova",
+    "category": "smartphones",
+    "price": 749.0,
+    "rating": 4.6,
+    "reviewCount": 1820,
+    "featured": false,
+    "initialStock": 200,
+    "shortDescription": "6.1\" OLED, dual 50MP camera, compact flagship.",
+    "description": "Everything you love about the X1 Pro in a pocketable 6.1\" design. Dual 50MP cameras, 120Hz display and the same efficient N3 chip.",
+    "specs": {
+      "Display": "6.1\" OLED, 120Hz",
+      "Chip": "Nova N3 (3nm)",
+      "Storage": "128 GB",
+      "Camera": "50MP wide + 12MP ultra-wide",
+      "Battery": "4200 mAh, 30W wired"
+    },
+    "art": {
+      "from": "#4834D4",
+      "to": "#7ED6DF"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "5g",
+      "compact"
+    ]
+  },
+  {
+    "productId": "vv-phone-003",
+    "name": "Orbit Fold 3",
+    "brand": "Orbit",
+    "category": "smartphones",
+    "price": 1599.0,
+    "rating": 4.4,
+    "reviewCount": 512,
+    "featured": true,
+    "initialStock": 35,
+    "shortDescription": "Unfolds into a 7.8\" tablet. Crease-free hinge.",
+    "description": "A phone when you need it, a tablet when you want it. The Orbit Fold 3 features a nearly invisible crease, a 7.8\" inner display and multitasking that finally feels natural.",
+    "specs": {
+      "Inner display": "7.8\" AMOLED, 120Hz",
+      "Cover display": "6.3\" AMOLED",
+      "Storage": "512 GB",
+      "Battery": "4600 mAh",
+      "Weight": "239 g"
+    },
+    "art": {
+      "from": "#F368E0",
+      "to": "#6C5CE7"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "foldable",
+      "5g"
+    ]
+  },
+  {
+    "productId": "vv-phone-004",
+    "name": "Pulse Lite 5G",
+    "brand": "Pulse",
+    "category": "smartphones",
+    "price": 329.0,
+    "compareAtPrice": 379.0,
+    "rating": 4.3,
+    "reviewCount": 3401,
+    "featured": false,
+    "initialStock": 300,
+    "shortDescription": "Big battery, bright 6.5\" display, unbeatable value.",
+    "description": "The Pulse Lite 5G is the smart pick: a 6000 mAh battery that lasts two days, a bright 90Hz display and a 64MP main camera.",
+    "specs": {
+      "Display": "6.5\" LCD, 90Hz",
+      "Storage": "128 GB + microSD",
+      "Camera": "64MP main",
+      "Battery": "6000 mAh"
+    },
+    "art": {
+      "from": "#10AC84",
+      "to": "#48DBFB"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "5g",
+      "budget"
+    ]
+  },
+  {
+    "productId": "vv-laptop-001",
+    "name": "Aether Book 14",
+    "brand": "Aether",
+    "category": "laptops",
+    "price": 1399.0,
+    "rating": 4.7,
+    "reviewCount": 980,
+    "featured": true,
+    "initialStock": 80,
+    "shortDescription": "14\" 3K display, 20-hour battery, 1.2 kg.",
+    "description": "Featherlight aluminum unibody, a gorgeous 3K 120Hz display and up to 20 hours of battery life. The Aether Book 14 is built for people who work from anywhere.",
+    "specs": {
+      "Display": "14\" 3K, 120Hz",
+      "CPU": "12-core Aether A2",
+      "Memory": "16 GB",
+      "Storage": "512 GB SSD",
+      "Battery": "Up to 20 h",
+      "Weight": "1.2 kg"
+    },
+    "art": {
+      "from": "#2D3436",
+      "to": "#74B9FF"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "ultrabook",
+      "work"
+    ]
+  },
+  {
+    "productId": "vv-laptop-002",
+    "name": "Aether Book Pro 16",
+    "brand": "Aether",
+    "category": "laptops",
+    "price": 2499.0,
+    "rating": 4.9,
+    "reviewCount": 641,
+    "featured": true,
+    "initialStock": 40,
+    "shortDescription": "16\" mini-LED, 18-core CPU, built for creators.",
+    "description": "A desktop-class workstation in a 16\" chassis. Mini-LED XDR display, 18-core CPU, 36 GB unified memory and a six-speaker sound system.",
+    "specs": {
+      "Display": "16\" mini-LED, 1600 nits HDR",
+      "CPU": "18-core Aether A2 Max",
+      "Memory": "36 GB",
+      "Storage": "1 TB SSD",
+      "Ports": "3x Thunderbolt, HDMI, SD"
+    },
+    "art": {
+      "from": "#130F40",
+      "to": "#686DE0"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "creator",
+      "pro"
+    ]
+  },
+  {
+    "productId": "vv-laptop-003",
+    "name": "Kinetic Blade 15 Gaming",
+    "brand": "Kinetic",
+    "category": "laptops",
+    "price": 1899.0,
+    "compareAtPrice": 2099.0,
+    "rating": 4.6,
+    "reviewCount": 733,
+    "featured": false,
+    "initialStock": 50,
+    "shortDescription": "RTX-class GPU, 240Hz QHD, per-key RGB.",
+    "description": "Frame rates that keep up with you. The Blade 15 packs a high-end GPU, a 240Hz QHD panel and a vapor-chamber cooling system into a 19mm chassis.",
+    "specs": {
+      "Display": "15.6\" QHD, 240Hz",
+      "GPU": "12 GB discrete",
+      "CPU": "14-core",
+      "Memory": "32 GB DDR5",
+      "Storage": "1 TB NVMe"
+    },
+    "art": {
+      "from": "#EB4D4B",
+      "to": "#130F40"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "gaming",
+      "rgb"
+    ]
+  },
+  {
+    "productId": "vv-laptop-004",
+    "name": "Lumen Chromebook Air",
+    "brand": "Lumen",
+    "category": "laptops",
+    "price": 449.0,
+    "rating": 4.4,
+    "reviewCount": 1290,
+    "featured": false,
+    "initialStock": 150,
+    "shortDescription": "Fast, secure and simple. 13\" touch display.",
+    "description": "Boots in seconds, updates itself, and runs all day. A great first laptop for students and families.",
+    "specs": {
+      "Display": "13.3\" FHD touch",
+      "Memory": "8 GB",
+      "Storage": "128 GB",
+      "Battery": "Up to 12 h"
+    },
+    "art": {
+      "from": "#22A6B3",
+      "to": "#BADC58"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "student",
+      "budget"
+    ]
+  },
+  {
+    "productId": "vv-audio-001",
+    "name": "Pulse ANC Max Headphones",
+    "brand": "Pulse",
+    "category": "audio",
+    "price": 349.0,
+    "compareAtPrice": 399.0,
+    "rating": 4.8,
+    "reviewCount": 4120,
+    "featured": true,
+    "initialStock": 160,
+    "shortDescription": "Industry-leading noise cancelling, 40-hour battery.",
+    "description": "Adaptive noise cancelling that tunes itself to your environment, plush memory-foam cushions and 40 hours of playback. Spatial audio included.",
+    "specs": {
+      "Type": "Over-ear, wireless",
+      "ANC": "Adaptive hybrid",
+      "Battery": "40 h (ANC on)",
+      "Codec": "LDAC, AAC, SBC",
+      "Weight": "250 g"
+    },
+    "art": {
+      "from": "#000000",
+      "to": "#6C5CE7"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "anc",
+      "wireless"
+    ]
+  },
+  {
+    "productId": "vv-audio-002",
+    "name": "Pulse Buds Pro 2",
+    "brand": "Pulse",
+    "category": "audio",
+    "price": 199.0,
+    "rating": 4.6,
+    "reviewCount": 5210,
+    "featured": true,
+    "initialStock": 400,
+    "shortDescription": "True wireless earbuds with ANC and spatial audio.",
+    "description": "Tiny buds, huge sound. Active noise cancelling, transparency mode, IPX4 sweat resistance and a wireless charging case.",
+    "specs": {
+      "Type": "True wireless",
+      "ANC": "Yes",
+      "Battery": "8 h + 24 h case",
+      "Water resistance": "IPX4"
+    },
+    "art": {
+      "from": "#F8EFBA",
+      "to": "#58B19F"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "anc",
+      "earbuds"
+    ]
+  },
+  {
+    "productId": "vv-audio-003",
+    "name": "Halo Boom 360 Speaker",
+    "brand": "Halo",
+    "category": "audio",
+    "price": 149.0,
+    "rating": 4.5,
+    "reviewCount": 2280,
+    "featured": false,
+    "initialStock": 220,
+    "shortDescription": "360° sound, waterproof, floats in the pool.",
+    "description": "Rugged, waterproof and loud. The Boom 360 fills any space with room-filling sound and lasts 20 hours on a charge.",
+    "specs": {
+      "Output": "30 W",
+      "Battery": "20 h",
+      "Water resistance": "IP67 (floats)",
+      "Pairing": "Party mode up to 100 speakers"
+    },
+    "art": {
+      "from": "#FF9F43",
+      "to": "#EE5253"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "portable",
+      "outdoor"
+    ]
+  },
+  {
+    "productId": "vv-audio-004",
+    "name": "Halo Soundbar Atmos 5.1",
+    "brand": "Halo",
+    "category": "audio",
+    "price": 699.0,
+    "rating": 4.7,
+    "reviewCount": 845,
+    "featured": false,
+    "initialStock": 60,
+    "shortDescription": "Dolby Atmos soundbar with wireless subwoofer.",
+    "description": "Cinema-grade immersive audio with up-firing drivers, a wireless 8\" subwoofer and voice enhancement for crystal-clear dialogue.",
+    "specs": {
+      "Channels": "5.1.2",
+      "Subwoofer": "8\" wireless",
+      "Inputs": "HDMI eARC, optical, Wi-Fi, Bluetooth"
+    },
+    "art": {
+      "from": "#2C3A47",
+      "to": "#B33771"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "home-theater",
+      "atmos"
+    ]
+  },
+  {
+    "productId": "vv-wear-001",
+    "name": "Orbit Watch Ultra",
+    "brand": "Orbit",
+    "category": "wearables",
+    "price": 799.0,
+    "rating": 4.8,
+    "reviewCount": 1502,
+    "featured": true,
+    "initialStock": 90,
+    "shortDescription": "Titanium, dual-band GPS, 72-hour battery.",
+    "description": "Built for endurance athletes and explorers: a 49mm titanium case, dual-frequency GPS, a dive computer and an emergency siren.",
+    "specs": {
+      "Case": "49 mm titanium",
+      "Display": "Always-on, 3000 nits",
+      "Battery": "Up to 72 h",
+      "Water": "100 m"
+    },
+    "art": {
+      "from": "#F79F1F",
+      "to": "#2C2C54"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "fitness",
+      "gps"
+    ]
+  },
+  {
+    "productId": "vv-wear-002",
+    "name": "Orbit Watch 9",
+    "brand": "Orbit",
+    "category": "wearables",
+    "price": 399.0,
+    "rating": 4.6,
+    "reviewCount": 3870,
+    "featured": false,
+    "initialStock": 180,
+    "shortDescription": "Health sensors, sleep tracking, always-on display.",
+    "description": "Heart rate, blood oxygen, ECG and sleep stages on your wrist. Crash and fall detection keep you safe.",
+    "specs": {
+      "Case": "41/45 mm aluminum",
+      "Sensors": "HR, SpO2, ECG, temperature",
+      "Battery": "Up to 36 h"
+    },
+    "art": {
+      "from": "#FD7272",
+      "to": "#9AECDB"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "health",
+      "fitness"
+    ]
+  },
+  {
+    "productId": "vv-wear-003",
+    "name": "Kinetic Band 6",
+    "brand": "Kinetic",
+    "category": "wearables",
+    "price": 79.0,
+    "compareAtPrice": 99.0,
+    "rating": 4.3,
+    "reviewCount": 6120,
+    "featured": false,
+    "initialStock": 500,
+    "shortDescription": "Slim fitness tracker with 14-day battery.",
+    "description": "Track steps, workouts, stress and sleep for two weeks on a single charge.",
+    "specs": {
+      "Display": "1.6\" AMOLED",
+      "Battery": "14 days",
+      "Water": "5 ATM"
+    },
+    "art": {
+      "from": "#1B9CFC",
+      "to": "#55E6C1"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "fitness",
+      "budget"
+    ]
+  },
+  {
+    "productId": "vv-wear-004",
+    "name": "Lumen Vision AR Glasses",
+    "brand": "Lumen",
+    "category": "wearables",
+    "price": 499.0,
+    "rating": 4.1,
+    "reviewCount": 320,
+    "featured": false,
+    "initialStock": 25,
+    "shortDescription": "Private 120\" virtual screen anywhere.",
+    "description": "Lightweight AR glasses that project a private 120\" screen. Perfect for flights, commutes and focused work.",
+    "specs": {
+      "Virtual screen": "120\" @ 3 m",
+      "Resolution": "1080p per eye",
+      "Weight": "75 g",
+      "Connection": "USB-C DisplayPort"
+    },
+    "art": {
+      "from": "#3B3B98",
+      "to": "#FC427B"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "ar",
+      "travel"
+    ]
+  },
+  {
+    "productId": "vv-cam-001",
+    "name": "Lumen Z8 Mirrorless",
+    "brand": "Lumen",
+    "category": "cameras",
+    "price": 2199.0,
+    "rating": 4.9,
+    "reviewCount": 410,
+    "featured": true,
+    "initialStock": 30,
+    "shortDescription": "45MP full-frame, 8K video, in-body stabilization.",
+    "description": "A full-frame powerhouse with a stacked 45MP sensor, subject-detect autofocus, 8K30 video and 8-stop image stabilization.",
+    "specs": {
+      "Sensor": "45MP full-frame stacked",
+      "Video": "8K30, 4K120",
+      "IBIS": "8 stops",
+      "Burst": "30 fps"
+    },
+    "art": {
+      "from": "#1E272E",
+      "to": "#D2DAE2"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "pro",
+      "full-frame"
+    ]
+  },
+  {
+    "productId": "vv-cam-002",
+    "name": "Kinetic Action 5",
+    "brand": "Kinetic",
+    "category": "cameras",
+    "price": 399.0,
+    "rating": 4.6,
+    "reviewCount": 1980,
+    "featured": false,
+    "initialStock": 140,
+    "shortDescription": "5.3K action cam, waterproof, horizon lock.",
+    "description": "Capture every adventure with 5.3K60 video, rock-steady stabilization with 360° horizon lock and a waterproof body.",
+    "specs": {
+      "Video": "5.3K60, 4K120",
+      "Waterproof": "10 m",
+      "Screens": "Front + rear"
+    },
+    "art": {
+      "from": "#0ABDE3",
+      "to": "#222F3E"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "action",
+      "outdoor"
+    ]
+  },
+  {
+    "productId": "vv-cam-003",
+    "name": "Halo Instant Mini",
+    "brand": "Halo",
+    "category": "cameras",
+    "price": 89.0,
+    "rating": 4.5,
+    "reviewCount": 2750,
+    "featured": false,
+    "initialStock": 260,
+    "shortDescription": "Print memories instantly. Fun for every party.",
+    "description": "Point, shoot, print. The Instant Mini delivers credit-card sized prints in seconds.",
+    "specs": {
+      "Film": "Mini instant film",
+      "Flash": "Auto",
+      "Modes": "Selfie, macro"
+    },
+    "art": {
+      "from": "#FDA7DF",
+      "to": "#FFC312"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "instant",
+      "fun"
+    ]
+  },
+  {
+    "productId": "vv-game-001",
+    "name": "Kinetic Play Console X",
+    "brand": "Kinetic",
+    "category": "gaming",
+    "price": 499.0,
+    "rating": 4.8,
+    "reviewCount": 7210,
+    "featured": true,
+    "initialStock": 75,
+    "shortDescription": "4K120 gaming, 1 TB SSD, ray tracing.",
+    "description": "Next-gen gaming with native 4K at up to 120 fps, hardware ray tracing and near-instant load times.",
+    "specs": {
+      "Resolution": "Up to 4K 120Hz",
+      "Storage": "1 TB NVMe",
+      "Ray tracing": "Hardware",
+      "Controller": "Haptic wireless"
+    },
+    "art": {
+      "from": "#0C2461",
+      "to": "#1E90FF"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "console",
+      "4k"
+    ]
+  },
+  {
+    "productId": "vv-game-002",
+    "name": "Kinetic Pocket Handheld",
+    "brand": "Kinetic",
+    "category": "gaming",
+    "price": 549.0,
+    "rating": 4.5,
+    "reviewCount": 1460,
+    "featured": false,
+    "initialStock": 65,
+    "shortDescription": "Your PC library in your hands. 7\" 120Hz OLED.",
+    "description": "A handheld gaming PC with a gorgeous 7\" OLED, a custom APU and hall-effect sticks.",
+    "specs": {
+      "Display": "7\" OLED, 120Hz",
+      "Storage": "512 GB",
+      "Battery": "3-12 h"
+    },
+    "art": {
+      "from": "#6D214F",
+      "to": "#E84393"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "handheld",
+      "pc"
+    ]
+  },
+  {
+    "productId": "vv-game-003",
+    "name": "Aether Pro Wireless Controller",
+    "brand": "Aether",
+    "category": "gaming",
+    "price": 69.0,
+    "rating": 4.6,
+    "reviewCount": 3880,
+    "featured": false,
+    "initialStock": 450,
+    "shortDescription": "Low-latency wireless, back paddles, 40 h battery.",
+    "description": "Tournament-ready controller with remappable back paddles, trigger stops and a 2.4 GHz low-latency dongle.",
+    "specs": {
+      "Connectivity": "2.4 GHz, Bluetooth, USB-C",
+      "Battery": "40 h",
+      "Compatibility": "PC, Console X, mobile"
+    },
+    "art": {
+      "from": "#2F3640",
+      "to": "#00A8FF"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "controller",
+      "accessory"
+    ]
+  },
+  {
+    "productId": "vv-game-004",
+    "name": "Lumen VR One Headset",
+    "brand": "Lumen",
+    "category": "gaming",
+    "price": 429.0,
+    "compareAtPrice": 499.0,
+    "rating": 4.4,
+    "reviewCount": 990,
+    "featured": true,
+    "initialStock": 45,
+    "shortDescription": "Standalone mixed-reality headset, full-color passthrough.",
+    "description": "Untethered VR and mixed reality with pancake lenses, full-color passthrough and hand tracking.",
+    "specs": {
+      "Resolution": "2064x2208 per eye",
+      "Refresh": "120Hz",
+      "Storage": "256 GB",
+      "Tracking": "Inside-out + hands"
+    },
+    "art": {
+      "from": "#5F27CD",
+      "to": "#48DBFB"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "vr",
+      "mixed-reality"
+    ]
+  },
+  {
+    "productId": "vv-home-001",
+    "name": "Halo Hub Smart Display 10",
+    "brand": "Halo",
+    "category": "smart-home",
+    "price": 229.0,
+    "rating": 4.5,
+    "reviewCount": 2140,
+    "featured": false,
+    "initialStock": 130,
+    "shortDescription": "10\" smart display that controls your whole home.",
+    "description": "Video calls, recipes, cameras and lights - all from one beautiful 10\" display with a built-in Matter hub.",
+    "specs": {
+      "Display": "10.1\" HD",
+      "Hub": "Matter, Thread, Zigbee",
+      "Camera": "13MP with shutter"
+    },
+    "art": {
+      "from": "#FAD390",
+      "to": "#E58E26"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "matter",
+      "voice"
+    ]
+  },
+  {
+    "productId": "vv-home-002",
+    "name": "Halo Glow Smart Bulb (4-pack)",
+    "brand": "Halo",
+    "category": "smart-home",
+    "price": 59.0,
+    "rating": 4.4,
+    "reviewCount": 8900,
+    "featured": false,
+    "initialStock": 600,
+    "shortDescription": "16M colors, Matter-ready, no hub required.",
+    "description": "Set the mood with 16 million colors and tunable whites. Works with every major voice assistant.",
+    "specs": {
+      "Brightness": "1100 lm",
+      "Protocol": "Matter over Wi-Fi",
+      "Lifetime": "25,000 h"
+    },
+    "art": {
+      "from": "#FFDD59",
+      "to": "#FF5E57"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "lighting",
+      "matter"
+    ]
+  },
+  {
+    "productId": "vv-home-003",
+    "name": "Orbit Guard Video Doorbell",
+    "brand": "Orbit",
+    "category": "smart-home",
+    "price": 179.0,
+    "rating": 4.3,
+    "reviewCount": 1730,
+    "featured": false,
+    "initialStock": 110,
+    "shortDescription": "2K HDR video, package detection, on-device AI.",
+    "description": "See who's at the door in crisp 2K HDR. On-device AI detects people and packages without a subscription.",
+    "specs": {
+      "Video": "2K HDR, 160° FOV",
+      "Power": "Battery or wired",
+      "Storage": "Local 32 GB"
+    },
+    "art": {
+      "from": "#3C6382",
+      "to": "#82CCDD"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "security",
+      "camera"
+    ]
+  },
+  {
+    "productId": "vv-home-004",
+    "name": "Kinetic RoboVac S9",
+    "brand": "Kinetic",
+    "category": "smart-home",
+    "price": 649.0,
+    "compareAtPrice": 799.0,
+    "rating": 4.6,
+    "reviewCount": 1220,
+    "featured": true,
+    "initialStock": 55,
+    "shortDescription": "Self-emptying robot vacuum and mop with LiDAR.",
+    "description": "LiDAR navigation, 8000 Pa suction, auto-lifting mop and a self-emptying dock that handles 60 days of debris.",
+    "specs": {
+      "Suction": "8000 Pa",
+      "Navigation": "LiDAR + AI obstacle avoidance",
+      "Dock": "Self-empty, self-wash"
+    },
+    "art": {
+      "from": "#535C68",
+      "to": "#C7ECEE"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "cleaning",
+      "robot"
+    ]
+  },
+  {
+    "productId": "vv-tv-001",
+    "name": "Lumen OLED 65\" C5",
+    "brand": "Lumen",
+    "category": "tv-display",
+    "price": 1799.0,
+    "compareAtPrice": 2199.0,
+    "rating": 4.9,
+    "reviewCount": 1610,
+    "featured": true,
+    "initialStock": 28,
+    "shortDescription": "Perfect blacks, 144Hz gaming, Dolby Vision.",
+    "description": "Self-lit OLED pixels deliver infinite contrast. With 4x HDMI 2.1, 144Hz VRR and Dolby Vision, it's as good for gaming as it is for movies.",
+    "specs": {
+      "Size": "65\"",
+      "Panel": "OLED evo",
+      "Refresh": "144Hz VRR",
+      "HDR": "Dolby Vision, HDR10+"
+    },
+    "art": {
+      "from": "#000000",
+      "to": "#E84118"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "oled",
+      "4k"
+    ]
+  },
+  {
+    "productId": "vv-tv-002",
+    "name": "Aether Studio 27\" 5K Monitor",
+    "brand": "Aether",
+    "category": "tv-display",
+    "price": 1299.0,
+    "rating": 4.7,
+    "reviewCount": 540,
+    "featured": false,
+    "initialStock": 40,
+    "shortDescription": "5K Retina, 600 nits, single-cable Thunderbolt.",
+    "description": "A color-accurate 5K display for creators, with a 12MP camera, studio mics and a single Thunderbolt cable that also charges your laptop.",
+    "specs": {
+      "Resolution": "5120x2880",
+      "Brightness": "600 nits",
+      "Color": "P3 wide color",
+      "Ports": "Thunderbolt, 3x USB-C"
+    },
+    "art": {
+      "from": "#DCDDE1",
+      "to": "#487EB0"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "monitor",
+      "creator"
+    ]
+  },
+  {
+    "productId": "vv-tv-003",
+    "name": "Kinetic 32\" 240Hz Gaming Monitor",
+    "brand": "Kinetic",
+    "category": "tv-display",
+    "price": 899.0,
+    "rating": 4.6,
+    "reviewCount": 760,
+    "featured": false,
+    "initialStock": 50,
+    "shortDescription": "QD-OLED, 4K 240Hz, 0.03 ms response.",
+    "description": "The ultimate esports and AAA monitor: QD-OLED colors, 4K resolution and a blistering 240Hz refresh rate.",
+    "specs": {
+      "Panel": "QD-OLED",
+      "Resolution": "3840x2160",
+      "Refresh": "240Hz",
+      "Response": "0.03 ms"
+    },
+    "art": {
+      "from": "#192A56",
+      "to": "#9C88FF"
+    },
+    "warrantyMonths": 36,
+    "tags": [
+      "gaming",
+      "oled"
+    ]
+  },
+  {
+    "productId": "vv-drone-001",
+    "name": "Orbit Air 3 Drone",
+    "brand": "Orbit",
+    "category": "drones",
+    "price": 1099.0,
+    "rating": 4.8,
+    "reviewCount": 880,
+    "featured": true,
+    "initialStock": 35,
+    "shortDescription": "Dual cameras, 46-min flight, omnidirectional sensing.",
+    "description": "A foldable drone with wide and 3x tele cameras, 46 minutes of flight time and obstacle sensing in every direction.",
+    "specs": {
+      "Cameras": "48MP wide + 48MP 3x tele",
+      "Flight time": "46 min",
+      "Range": "20 km",
+      "Weight": "720 g"
+    },
+    "art": {
+      "from": "#0FB9B1",
+      "to": "#2D98DA"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "aerial",
+      "4k"
+    ]
+  },
+  {
+    "productId": "vv-drone-002",
+    "name": "Orbit Mini 4",
+    "brand": "Orbit",
+    "category": "drones",
+    "price": 759.0,
+    "rating": 4.7,
+    "reviewCount": 1340,
+    "featured": false,
+    "initialStock": 60,
+    "shortDescription": "Under 249 g. No registration needed in most regions.",
+    "description": "Big capabilities in a sub-249 g airframe: 4K100 HDR video, true vertical shooting and 34-minute flights.",
+    "specs": {
+      "Camera": "48MP 1/1.3\"",
+      "Video": "4K100 HDR",
+      "Flight time": "34 min",
+      "Weight": "<249 g"
+    },
+    "art": {
+      "from": "#20BF6B",
+      "to": "#0FB9B1"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "compact",
+      "travel"
+    ]
+  },
+  {
+    "productId": "vv-acc-001",
+    "name": "Volt 140W GaN Charger",
+    "brand": "VoltVerse Basics",
+    "category": "accessories",
+    "price": 89.0,
+    "rating": 4.8,
+    "reviewCount": 4500,
+    "featured": false,
+    "initialStock": 700,
+    "shortDescription": "Charge a laptop, phone and watch at once.",
+    "description": "Three USB-C ports and one USB-A port with intelligent power distribution up to 140W, in a palm-sized GaN design.",
+    "specs": {
+      "Output": "140 W max",
+      "Ports": "3x USB-C, 1x USB-A",
+      "Tech": "GaN III"
+    },
+    "art": {
+      "from": "#F5F6FA",
+      "to": "#7F8FA6"
+    },
+    "warrantyMonths": 24,
+    "tags": [
+      "charging",
+      "usb-c"
+    ]
+  },
+  {
+    "productId": "vv-acc-002",
+    "name": "Volt MagPower 10K Battery",
+    "brand": "VoltVerse Basics",
+    "category": "accessories",
+    "price": 59.0,
+    "rating": 4.5,
+    "reviewCount": 3100,
+    "featured": false,
+    "initialStock": 520,
+    "shortDescription": "Magnetic wireless power bank with kickstand.",
+    "description": "Snap it on and go. 10,000 mAh of magnetic wireless charging with a built-in kickstand and USB-C pass-through.",
+    "specs": {
+      "Capacity": "10,000 mAh",
+      "Wireless": "15 W magnetic",
+      "Wired": "20 W USB-C"
+    },
+    "art": {
+      "from": "#A29BFE",
+      "to": "#6C5CE7"
+    },
+    "warrantyMonths": 18,
+    "tags": [
+      "charging",
+      "wireless"
+    ]
+  },
+  {
+    "productId": "vv-acc-003",
+    "name": "Aether Mechanical Keyboard K2",
+    "brand": "Aether",
+    "category": "accessories",
+    "price": 129.0,
+    "rating": 4.7,
+    "reviewCount": 2210,
+    "featured": false,
+    "initialStock": 240,
+    "shortDescription": "Hot-swappable, wireless, multi-device.",
+    "description": "A premium 75% mechanical keyboard with gasket mount, hot-swappable switches and connectivity to three devices.",
+    "specs": {
+      "Layout": "75%",
+      "Switches": "Hot-swap, linear",
+      "Connectivity": "Bluetooth, 2.4 GHz, USB-C",
+      "Battery": "Up to 200 h"
+    },
+    "art": {
+      "from": "#353B48",
+      "to": "#E1B12C"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "keyboard",
+      "wireless"
+    ]
+  },
+  {
+    "productId": "vv-acc-004",
+    "name": "Nova Tab S Pro 12.4\"",
+    "brand": "Nova",
+    "category": "laptops",
+    "price": 899.0,
+    "rating": 4.6,
+    "reviewCount": 1180,
+    "featured": true,
+    "initialStock": 70,
+    "shortDescription": "12.4\" AMOLED tablet with stylus included.",
+    "description": "A pro tablet for notes, sketches and streaming, with a 12.4\" 120Hz AMOLED display and a low-latency stylus in the box.",
+    "specs": {
+      "Display": "12.4\" AMOLED, 120Hz",
+      "Storage": "256 GB",
+      "Stylus": "Included",
+      "Battery": "Up to 14 h"
+    },
+    "art": {
+      "from": "#30336B",
+      "to": "#22A6B3"
+    },
+    "warrantyMonths": 12,
+    "tags": [
+      "tablet",
+      "stylus"
+    ]
+  }
+]

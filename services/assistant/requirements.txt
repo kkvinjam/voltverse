@@ -1,0 +1,2 @@
+# Strands Agents SDK (uses Amazon Bedrock via the Converse API and emits OpenTelemetry spans natively)
+strands-agents==1.62.0

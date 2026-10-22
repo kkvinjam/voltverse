@@ -1,0 +1,541 @@
+# VoltVerse backend microservices. Each gets its own ServiceAccount, which EKS Pod Identity
+# maps to a least-privilege IAM role (see the CloudFormation template).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: catalog
+  namespace: voltverse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: voltverse
+  labels: { app: catalog, app.kubernetes.io/part-of: voltverse }
+  annotations: { description: "Product catalog and search" }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: catalog }
+  template:
+    metadata:
+      labels: { app: catalog, app.kubernetes.io/part-of: voltverse }
+    spec:
+      serviceAccountName: catalog
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: catalog } } }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: catalog
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/catalog:${IMAGE_TAG}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: voltverse-config }
+            - configMapRef: { name: voltverse-chaos }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: catalog }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=catalog,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog
+  namespace: voltverse
+  labels: { app: catalog }
+spec:
+  type: ClusterIP
+  selector: { app: catalog }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inventory
+  namespace: voltverse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory
+  namespace: voltverse
+  labels: { app: inventory, app.kubernetes.io/part-of: voltverse }
+  annotations: { description: "Stock levels and reservations" }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: inventory }
+  template:
+    metadata:
+      labels: { app: inventory, app.kubernetes.io/part-of: voltverse }
+    spec:
+      serviceAccountName: inventory
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: inventory } } }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: inventory
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/inventory:${IMAGE_TAG}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: voltverse-config }
+            - configMapRef: { name: voltverse-chaos }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: inventory }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=inventory,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory
+  namespace: voltverse
+  labels: { app: inventory }
+spec:
+  type: ClusterIP
+  selector: { app: inventory }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cart
+  namespace: voltverse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: voltverse
+  labels: { app: cart, app.kubernetes.io/part-of: voltverse }
+  annotations: { description: "Shopping carts" }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: cart }
+  template:
+    metadata:
+      labels: { app: cart, app.kubernetes.io/part-of: voltverse }
+    spec:
+      serviceAccountName: cart
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: cart } } }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: cart
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/cart:${IMAGE_TAG}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: voltverse-config }
+            - configMapRef: { name: voltverse-chaos }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: cart }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=cart,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart
+  namespace: voltverse
+  labels: { app: cart }
+spec:
+  type: ClusterIP
+  selector: { app: cart }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: checkout
+  namespace: voltverse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: voltverse
+  labels: { app: checkout, app.kubernetes.io/part-of: voltverse }
+  annotations: { description: "Checkout orchestration (saga)" }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: checkout }
+  template:
+    metadata:
+      labels: { app: checkout, app.kubernetes.io/part-of: voltverse }
+    spec:
+      serviceAccountName: checkout
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: checkout } } }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: checkout
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/checkout:${IMAGE_TAG}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: voltverse-config }
+            - configMapRef: { name: voltverse-chaos }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: checkout }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=checkout,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout
+  namespace: voltverse
+  labels: { app: checkout }
+spec:
+  type: ClusterIP
+  selector: { app: checkout }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: payment
+  namespace: voltverse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  namespace: voltverse
+  labels: { app: payment, app.kubernetes.io/part-of: voltverse }
+  annotations: { description: "Simulated payment processor" }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: payment }
+  template:
+    metadata:
+      labels: { app: payment, app.kubernetes.io/part-of: voltverse }
+    spec:
+      serviceAccountName: payment
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: payment } } }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: payment
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/payment:${IMAGE_TAG}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: voltverse-config }
+            - configMapRef: { name: voltverse-chaos }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: payment }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=payment,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment
+  namespace: voltverse
+  labels: { app: payment }
+spec:
+  type: ClusterIP
+  selector: { app: payment }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orders
+  namespace: voltverse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: voltverse
+  labels: { app: orders, app.kubernetes.io/part-of: voltverse }
+  annotations: { description: "Orders, tracking, cancellations, returns" }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: orders }
+  template:
+    metadata:
+      labels: { app: orders, app.kubernetes.io/part-of: voltverse }
+    spec:
+      serviceAccountName: orders
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: orders } } }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: orders
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/orders:${IMAGE_TAG}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: voltverse-config }
+            - configMapRef: { name: voltverse-chaos }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: orders }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=orders,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders
+  namespace: voltverse
+  labels: { app: orders }
+spec:
+  type: ClusterIP
+  selector: { app: orders }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: assistant
+  namespace: voltverse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant
+  namespace: voltverse
+  labels: { app: assistant, app.kubernetes.io/part-of: voltverse }
+  annotations: { description: "Sparky AI agent (Strands + Bedrock)" }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: assistant }
+  template:
+    metadata:
+      labels: { app: assistant, app.kubernetes.io/part-of: voltverse }
+    spec:
+      serviceAccountName: assistant
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: assistant } } }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: assistant
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/assistant:${IMAGE_TAG}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: voltverse-config }
+            - configMapRef: { name: voltverse-chaos }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: assistant }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=assistant,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+          resources:
+            requests: { cpu: 250m, memory: 384Mi }
+            limits: { memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: assistant
+  namespace: voltverse
+  labels: { app: assistant }
+spec:
+  type: ClusterIP
+  selector: { app: assistant }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

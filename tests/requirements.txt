@@ -1,0 +1,6 @@
+# Test-only dependencies (service dependencies come from services/*/requirements.txt)
+-r ../services/common/requirements.txt
+-r ../services/assistant/requirements.txt
+pytest
+moto[server]
+pyyaml
