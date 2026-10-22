@@ -1,0 +1,268 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 1180" width="1720" height="1180" font-family="Inter, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+<defs><filter id="sh" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.12"/></filter>
+<marker id="a2563EB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2563EB"/></marker>
+<marker id="s2563EB" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2563EB"/></marker>
+<marker id="a7C3AED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7C3AED"/></marker>
+<marker id="s7C3AED" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7C3AED"/></marker>
+<marker id="aE8590C" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#E8590C"/></marker>
+<marker id="sE8590C" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#E8590C"/></marker>
+<marker id="a6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6B7280"/></marker>
+<marker id="s6B7280" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6B7280"/></marker>
+<marker id="aC925D1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#C925D1"/></marker>
+<marker id="sC925D1" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#C925D1"/></marker>
+<marker id="a01A88D" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#01A88D"/></marker>
+<marker id="s01A88D" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#01A88D"/></marker>
+</defs>
+<rect width="1720" height="1180" fill="#ffffff"/>
+<text x="30" y="42" font-size="24" font-weight="800" fill="#232F3E">⚡ VoltVerse — architecture</text>
+<text x="30" y="66" font-size="13" fill="#5f6b7a">Microservices e-commerce on Amazon EKS Auto Mode · Sparky AI agent (Strands Agents + Amazon Bedrock) · all telemetry to Amazon CloudWatch via OpenTelemetry</text>
+<rect x="28" y="360" width="130" height="74" rx="8" fill="#ffffff" stroke="#232F3E" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="28" y="360" width="6" height="74" rx="3" fill="#232F3E"/>
+<rect x="40" y="382.0" width="30" height="30" rx="6" fill="#232F3E"/>
+<text x="55" y="402.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">👤</text>
+<text x="78" y="393.0" font-size="13.5" font-weight="700" fill="#232F3E">Shoppers</text>
+<text x="78" y="409.0" font-size="11" font-weight="400" fill="#5f6b7a">browser</text>
+<rect x="178" y="88" width="1520" height="1072" rx="6" fill="none" stroke="#232F3E" stroke-width="1.6"/>
+<rect x="178" y="88" width="26" height="26" fill="#232F3E"/>
+<text x="191" y="106" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">aws</text>
+<text x="212" y="106" font-size="13" font-weight="600" fill="#232F3E">AWS Cloud</text>
+<rect x="196" y="340" width="180" height="114" rx="8" fill="#ffffff" stroke="#8C4FFF" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="196" y="340" width="6" height="114" rx="3" fill="#8C4FFF"/>
+<rect x="208" y="382.0" width="30" height="30" rx="6" fill="#8C4FFF"/>
+<text x="223" y="402.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">CF</text>
+<text x="246" y="385.0" font-size="13.5" font-weight="700" fill="#232F3E">Amazon CloudFront</text>
+<text x="246" y="401.0" font-size="11" font-weight="400" fill="#5f6b7a">HTTPS · *.cloudfront.net</text>
+<text x="246" y="417.0" font-size="11" font-weight="400" fill="#5f6b7a">/assets cached</text>
+<rect x="388" y="112" width="1294" height="1032" rx="6" fill="none" stroke="#147EBA" stroke-width="1.6" stroke-dasharray="6 4"/>
+<rect x="388" y="112" width="26" height="26" fill="#147EBA"/>
+<text x="401" y="130" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">R</text>
+<text x="422" y="130" font-size="13" font-weight="600" fill="#147EBA">Region (e.g. us-east-1)</text>
+<rect x="408" y="146" width="912" height="794" rx="6" fill="none" stroke="#8C4FFF" stroke-width="1.6"/>
+<rect x="408" y="146" width="26" height="26" fill="#8C4FFF"/>
+<text x="421" y="164" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">VPC</text>
+<text x="442" y="164" font-size="13" font-weight="600" fill="#8C4FFF">VPC 10.42.0.0/16 · 2 AZs</text>
+<rect x="428" y="176" width="872" height="58" rx="6" fill="#F2F8E9" stroke="#7AA116" stroke-width="1.6"/>
+<text x="438" y="194" font-size="13" font-weight="600" fill="#7AA116">Public subnets</text>
+<rect x="600" y="182" width="170" height="44" rx="8" fill="#ffffff" stroke="#8C4FFF" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="600" y="182" width="6" height="44" rx="3" fill="#8C4FFF"/>
+<text x="614" y="208.0" font-size="13.5" font-weight="700" fill="#232F3E">NAT gateway</text>
+<rect x="800" y="182" width="170" height="44" rx="8" fill="#ffffff" stroke="#8C4FFF" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="800" y="182" width="6" height="44" rx="3" fill="#8C4FFF"/>
+<text x="814" y="208.0" font-size="13.5" font-weight="700" fill="#232F3E">Internet gateway</text>
+<rect x="428" y="248" width="872" height="676" rx="6" fill="#EEF6FC" stroke="#147EBA" stroke-width="1.6"/>
+<text x="438" y="266" font-size="13" font-weight="600" fill="#147EBA">Private subnets</text>
+<rect x="438" y="356" width="178" height="92" rx="8" fill="#ffffff" stroke="#8C4FFF" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="438" y="356" width="6" height="92" rx="3" fill="#8C4FFF"/>
+<rect x="450" y="387.0" width="30" height="30" rx="6" fill="#8C4FFF"/>
+<text x="465" y="407.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">ALB</text>
+<text x="488" y="390.0" font-size="13.5" font-weight="700" fill="#232F3E">Internal ALB</text>
+<text x="488" y="406.0" font-size="11" font-weight="400" fill="#5f6b7a">HTTP :80 · no public IP</text>
+<text x="488" y="422.0" font-size="11" font-weight="400" fill="#5f6b7a">SG: CloudFront only</text>
+<rect x="438" y="466" width="178" height="44" rx="8" fill="#ffffff" stroke="#DD344C" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="438" y="466" width="6" height="44" rx="3" fill="#DD344C"/>
+<text x="452" y="484.0" font-size="13.5" font-weight="700" fill="#232F3E">AWS WAF</text>
+<text x="452" y="500.0" font-size="11" font-weight="400" fill="#5f6b7a">rate caps · allow-list</text>
+<rect x="438" y="764" width="178" height="80" rx="8" fill="#ffffff" stroke="#6B7280" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="438" y="764" width="6" height="80" rx="3" fill="#6B7280"/>
+<rect x="450" y="789.0" width="30" height="30" rx="6" fill="#6B7280"/>
+<text x="465" y="809.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">CB</text>
+<text x="488" y="800.0" font-size="13.5" font-weight="700" fill="#232F3E">CodeBuild deployer</text>
+<text x="488" y="816.0" font-size="11" font-weight="400" fill="#5f6b7a">build · push · kubectl</text>
+<rect x="620" y="262" width="666" height="648" rx="6" fill="#FFF8F1" stroke="#ED7100" stroke-width="1.6"/>
+<rect x="620" y="262" width="26" height="26" fill="#ED7100"/>
+<text x="633" y="280" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">EKS</text>
+<text x="654" y="280" font-size="13" font-weight="600" fill="#ED7100">Amazon EKS — Auto Mode (managed nodes, load balancing, Pod Identity)</text>
+<rect x="636" y="296" width="478" height="600" rx="6" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="646" y="314" font-size="13" font-weight="600" fill="#ED7100">namespace: voltverse</text>
+<rect x="652" y="336" width="170" height="84" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="2.4" filter="url(#sh)"/>
+<rect x="652" y="336" width="6" height="84" rx="3" fill="#ED7100"/>
+<rect x="664" y="363.0" width="30" height="30" rx="6" fill="#ED7100"/>
+<text x="679" y="383.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">UI</text>
+<text x="702" y="366.0" font-size="13.5" font-weight="700" fill="#232F3E">storefront</text>
+<text x="702" y="382.0" font-size="11" font-weight="400" fill="#5f6b7a">React SPA + nginx</text>
+<text x="702" y="398.0" font-size="11" font-weight="400" fill="#5f6b7a">API gateway (allow-list)</text>
+<rect x="900" y="322" width="198" height="50" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="900" y="322" width="6" height="50" rx="3" fill="#ED7100"/>
+<text x="914" y="343.0" font-size="13.5" font-weight="700" fill="#232F3E">catalog</text>
+<text x="914" y="359.0" font-size="11" font-weight="400" fill="#5f6b7a">products · search</text>
+<rect x="900" y="384" width="198" height="50" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="900" y="384" width="6" height="50" rx="3" fill="#ED7100"/>
+<text x="914" y="405.0" font-size="13.5" font-weight="700" fill="#232F3E">inventory</text>
+<text x="914" y="421.0" font-size="11" font-weight="400" fill="#5f6b7a">stock · reservations</text>
+<rect x="900" y="446" width="198" height="50" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="900" y="446" width="6" height="50" rx="3" fill="#ED7100"/>
+<text x="914" y="467.0" font-size="13.5" font-weight="700" fill="#232F3E">cart</text>
+<text x="914" y="483.0" font-size="11" font-weight="400" fill="#5f6b7a">anonymous carts</text>
+<rect x="900" y="508" width="198" height="50" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="2.4" filter="url(#sh)"/>
+<rect x="900" y="508" width="6" height="50" rx="3" fill="#ED7100"/>
+<text x="914" y="529.0" font-size="13.5" font-weight="700" fill="#232F3E">checkout</text>
+<text x="914" y="545.0" font-size="11" font-weight="400" fill="#5f6b7a">saga: stock → pay → order</text>
+<rect x="900" y="570" width="198" height="50" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="900" y="570" width="6" height="50" rx="3" fill="#ED7100"/>
+<text x="914" y="591.0" font-size="13.5" font-weight="700" fill="#232F3E">payment</text>
+<text x="914" y="607.0" font-size="11" font-weight="400" fill="#5f6b7a">simulated processor</text>
+<rect x="900" y="632" width="198" height="50" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="900" y="632" width="6" height="50" rx="3" fill="#ED7100"/>
+<text x="914" y="653.0" font-size="13.5" font-weight="700" fill="#232F3E">orders</text>
+<text x="914" y="669.0" font-size="11" font-weight="400" fill="#5f6b7a">tracking · cancel · returns</text>
+<rect x="652" y="520" width="196" height="128" rx="8" fill="#ffffff" stroke="#01A88D" stroke-width="2.4" filter="url(#sh)"/>
+<rect x="652" y="520" width="6" height="128" rx="3" fill="#01A88D"/>
+<rect x="664" y="569.0" width="30" height="30" rx="6" fill="#01A88D"/>
+<text x="679" y="589.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">AI</text>
+<text x="702" y="572.0" font-size="13.5" font-weight="700" fill="#232F3E">Sparky (assistant)</text>
+<text x="702" y="588.0" font-size="11" font-weight="400" fill="#5f6b7a">Strands Agents · 13 tools</text>
+<text x="702" y="604.0" font-size="11" font-weight="400" fill="#5f6b7a">SSE streaming · ADOT SDK</text>
+<rect x="652" y="800" width="170" height="56" rx="8" fill="#ffffff" stroke="#6B7280" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="652" y="800" width="6" height="56" rx="3" fill="#6B7280"/>
+<text x="666" y="824.0" font-size="13.5" font-weight="700" fill="#232F3E">loadgen</text>
+<text x="666" y="840.0" font-size="11" font-weight="400" fill="#5f6b7a">synthetic shoppers</text>
+<rect x="1128" y="296" width="144" height="220" rx="6" fill="#ffffff" stroke="#E8590C" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="1138" y="314" font-size="13" font-weight="600" fill="#E8590C">ns: observability</text>
+<rect x="1138" y="334" width="124" height="112" rx="8" fill="#ffffff" stroke="#E8590C" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1138" y="334" width="6" height="112" rx="3" fill="#E8590C"/>
+<text x="1152" y="378.0" font-size="13.5" font-weight="700" fill="#232F3E">ADOT Collector</text>
+<text x="1152" y="394.0" font-size="11" font-weight="400" fill="#5f6b7a">OTLP receiver</text>
+<text x="1152" y="410.0" font-size="11" font-weight="400" fill="#5f6b7a">→ CloudWatch</text>
+<rect x="1128" y="540" width="144" height="54" rx="8" fill="#ffffff" stroke="#DD344C" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1128" y="540" width="6" height="54" rx="3" fill="#DD344C"/>
+<text x="1142" y="563.0" font-size="13.5" font-weight="700" fill="#232F3E">EKS Pod Identity</text>
+<text x="1142" y="579.0" font-size="11" font-weight="400" fill="#5f6b7a">per-service IAM roles</text>
+<rect x="1128" y="608" width="144" height="54" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1128" y="608" width="6" height="54" rx="3" fill="#ED7100"/>
+<text x="1142" y="631.0" font-size="13.5" font-weight="700" fill="#232F3E">Auto Mode nodes</text>
+<text x="1142" y="647.0" font-size="11" font-weight="400" fill="#5f6b7a">EC2, x86_64</text>
+<rect x="1346" y="150" width="316" height="92" rx="8" fill="#ffffff" stroke="#01A88D" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1346" y="150" width="6" height="92" rx="3" fill="#01A88D"/>
+<rect x="1358" y="181.0" width="30" height="30" rx="6" fill="#01A88D"/>
+<text x="1373" y="201.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">BR</text>
+<text x="1396" y="184.0" font-size="13.5" font-weight="700" fill="#232F3E">Amazon Bedrock</text>
+<text x="1396" y="200.0" font-size="11" font-weight="400" fill="#5f6b7a">Claude Opus 5.5 · global inference profile</text>
+<text x="1396" y="216.0" font-size="11" font-weight="400" fill="#5f6b7a">Converse / ConverseStream</text>
+<rect x="1346" y="270" width="316" height="132" rx="8" fill="#ffffff" stroke="#C925D1" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1346" y="270" width="6" height="132" rx="3" fill="#C925D1"/>
+<rect x="1358" y="321.0" width="30" height="30" rx="6" fill="#C925D1"/>
+<text x="1373" y="341.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">DDB</text>
+<text x="1396" y="324.0" font-size="13.5" font-weight="700" fill="#232F3E">Amazon DynamoDB</text>
+<text x="1396" y="340.0" font-size="11" font-weight="400" fill="#5f6b7a">products · inventory · carts</text>
+<text x="1396" y="356.0" font-size="11" font-weight="400" fill="#5f6b7a">orders · payments (GSI orderId)</text>
+<text x="1360" y="392" font-size="10.5" fill="#5f6b7a">via VPC gateway endpoint · on-demand · encrypted</text>
+<rect x="1346" y="428" width="316" height="330" rx="6" fill="#FDF2F8" stroke="#E7157B" stroke-width="1.6"/>
+<rect x="1346" y="428" width="26" height="26" fill="#E7157B"/>
+<text x="1359" y="446" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">CW</text>
+<text x="1380" y="446" font-size="13" font-weight="600" fill="#E7157B">Amazon CloudWatch</text>
+<rect x="1360" y="462" width="288" height="48" rx="8" fill="#ffffff" stroke="#E7157B" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1360" y="462" width="6" height="48" rx="3" fill="#E7157B"/>
+<text x="1374" y="482.0" font-size="13.5" font-weight="700" fill="#232F3E">Transaction Search</text>
+<text x="1374" y="498.0" font-size="11" font-weight="400" fill="#5f6b7a">spans → aws/spans · X-Ray trace map</text>
+<rect x="1360" y="520" width="288" height="48" rx="8" fill="#ffffff" stroke="#E7157B" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1360" y="520" width="6" height="48" rx="3" fill="#E7157B"/>
+<text x="1374" y="540.0" font-size="13.5" font-weight="700" fill="#232F3E">GenAI Observability</text>
+<text x="1374" y="556.0" font-size="11" font-weight="400" fill="#5f6b7a">Bedrock AgentCore view: Sparky</text>
+<rect x="1360" y="578" width="288" height="48" rx="8" fill="#ffffff" stroke="#E7157B" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1360" y="578" width="6" height="48" rx="3" fill="#E7157B"/>
+<text x="1374" y="598.0" font-size="13.5" font-weight="700" fill="#232F3E">CloudWatch Logs</text>
+<text x="1374" y="614.0" font-size="11" font-weight="400" fill="#5f6b7a">app logs · agent log group</text>
+<rect x="1360" y="636" width="288" height="48" rx="8" fill="#ffffff" stroke="#E7157B" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1360" y="636" width="6" height="48" rx="3" fill="#E7157B"/>
+<text x="1374" y="656.0" font-size="13.5" font-weight="700" fill="#232F3E">CloudWatch Metrics</text>
+<text x="1374" y="672.0" font-size="11" font-weight="400" fill="#5f6b7a">VoltVerse namespace (EMF)</text>
+<rect x="1360" y="694" width="288" height="48" rx="8" fill="#ffffff" stroke="#E7157B" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1360" y="694" width="6" height="48" rx="3" fill="#E7157B"/>
+<text x="1374" y="714.0" font-size="13.5" font-weight="700" fill="#232F3E">Dashboard</text>
+<text x="1374" y="730.0" font-size="11" font-weight="400" fill="#5f6b7a">business + service + agent health</text>
+<rect x="1346" y="782" width="150" height="56" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1346" y="782" width="6" height="56" rx="3" fill="#ED7100"/>
+<text x="1360" y="806.0" font-size="13.5" font-weight="700" fill="#232F3E">Amazon ECR</text>
+<text x="1360" y="822.0" font-size="11" font-weight="400" fill="#5f6b7a">8 repositories</text>
+<rect x="1512" y="782" width="150" height="56" rx="8" fill="#ffffff" stroke="#7AA116" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1512" y="782" width="6" height="56" rx="3" fill="#7AA116"/>
+<text x="1526" y="806.0" font-size="13.5" font-weight="700" fill="#232F3E">Amazon S3</text>
+<text x="1526" y="822.0" font-size="11" font-weight="400" fill="#5f6b7a">source zip (opt.)</text>
+<rect x="408" y="960" width="912" height="168" rx="6" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="418" y="978" font-size="13" font-weight="600" fill="#6B7280">Provisioning — one CloudFormation template per account</text>
+<rect x="428" y="1000" width="190" height="84" rx="8" fill="#ffffff" stroke="#E7157B" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="428" y="1000" width="6" height="84" rx="3" fill="#E7157B"/>
+<rect x="440" y="1027.0" width="30" height="30" rx="6" fill="#E7157B"/>
+<text x="455" y="1047.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">CFN</text>
+<text x="478" y="1030.0" font-size="13.5" font-weight="700" fill="#232F3E">AWS CloudFormation</text>
+<text x="478" y="1046.0" font-size="11" font-weight="400" fill="#5f6b7a">VPC · EKS · DDB · ALB</text>
+<text x="478" y="1062.0" font-size="11" font-weight="400" fill="#5f6b7a">CloudFront · WAF · IAM</text>
+<rect x="668" y="1000" width="190" height="84" rx="8" fill="#ffffff" stroke="#ED7100" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="668" y="1000" width="6" height="84" rx="3" fill="#ED7100"/>
+<rect x="680" y="1027.0" width="30" height="30" rx="6" fill="#ED7100"/>
+<text x="695" y="1047.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">λ</text>
+<text x="718" y="1030.0" font-size="13.5" font-weight="700" fill="#232F3E">Custom resource</text>
+<text x="718" y="1046.0" font-size="11" font-weight="400" fill="#5f6b7a">AWS Lambda</text>
+<text x="718" y="1062.0" font-size="11" font-weight="400" fill="#5f6b7a">starts the build</text>
+<rect x="908" y="1000" width="190" height="84" rx="8" fill="#ffffff" stroke="#6B7280" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="908" y="1000" width="6" height="84" rx="3" fill="#6B7280"/>
+<rect x="920" y="1027.0" width="30" height="30" rx="6" fill="#6B7280"/>
+<text x="935" y="1047.0" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">CB</text>
+<text x="958" y="1030.0" font-size="13.5" font-weight="700" fill="#232F3E">CodeBuild deployer</text>
+<text x="958" y="1046.0" font-size="11" font-weight="400" fill="#5f6b7a">images · seed data</text>
+<text x="958" y="1062.0" font-size="11" font-weight="400" fill="#5f6b7a">kubectl apply · callback</text>
+<rect x="1148" y="1000" width="150" height="84" rx="8" fill="#ffffff" stroke="#7AA116" stroke-width="1.6" filter="url(#sh)"/>
+<rect x="1148" y="1000" width="6" height="84" rx="3" fill="#7AA116"/>
+<text x="1162" y="1038.0" font-size="13.5" font-weight="700" fill="#232F3E">GitHub / S3</text>
+<text x="1162" y="1054.0" font-size="11" font-weight="400" fill="#5f6b7a">application source</text>
+<path d="M 618 1042 L 666 1042" fill="none" stroke="#6B7280" stroke-width="2" marker-end="url(#a6B7280)"/>
+<path d="M 858 1042 L 906 1042" fill="none" stroke="#6B7280" stroke-width="2" marker-end="url(#a6B7280)"/>
+<path d="M 1146 1042 L 1100 1042" fill="none" stroke="#6B7280" stroke-width="2" marker-end="url(#a6B7280)"/>
+<text x="1123" y="1034" font-size="11" font-weight="600" fill="#6B7280" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">clone</text>
+<path d="M 1003 1000 L 1003 960 L 527 960 L 527 846" fill="none" stroke="#6B7280" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a6B7280)"/>
+<text x="760" y="954" font-size="11" font-weight="600" fill="#6B7280" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">runs in VPC</text>
+<path d="M 158 397 L 198 397" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<text x="178" y="388" font-size="11" font-weight="600" fill="#2563EB" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">HTTPS</text>
+<path d="M 376 400 L 436 400" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<text x="406" y="391" font-size="11" font-weight="600" fill="#2563EB" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">VPC origin</text>
+<path d="M 616 378 L 650 378" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<text x="633" y="370" font-size="11" font-weight="600" fill="#2563EB" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">TGB</text>
+<path d="M 822 362 L 866 362" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<path d="M 866 347 V 657" stroke="#2563EB" stroke-width="2" fill="none"/>
+<path d="M 866 347 L 898 347" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<path d="M 866 409 L 898 409" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<path d="M 866 471 L 898 471" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<path d="M 866 533 L 898 533" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<path d="M 866 595 L 898 595" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<path d="M 866 657 L 898 657" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<text x="836" y="330" font-size="11" font-weight="600" fill="#2563EB" text-anchor="middle">REST /api/*</text>
+<path d="M 737 420 L 737 518" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#a2563EB)"/>
+<text x="742" y="474" font-size="11" font-weight="600" fill="#2563EB" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="4">/api/assistant (SSE)</text>
+<path d="M 1098 300 L 1110 300 L 1110 284 L 1344 284" fill="none" stroke="#C925D1" stroke-width="2" marker-end="url(#aC925D1)"/>
+<text x="1230" y="278" font-size="11" font-weight="600" fill="#C925D1" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">DynamoDB API</text>
+<path d="M 1098 347 H 1110 M 1098 409 H 1110 M 1098 471 H 1110 M 1098 595 H 1110 M 1098 657 H 1110 M 1110 300 V 657" stroke="#C925D1" stroke-width="2" fill="none"/>
+<path d="M 848 560 L 884 560 L 884 371 L 898 371" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#a7C3AED)"/>
+<path d="M 884 423 L 898 423" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#a7C3AED)"/>
+<path d="M 884 485 L 898 485" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#a7C3AED)"/>
+<path d="M 884 547 L 898 547" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#a7C3AED)"/>
+<path d="M 884 609 L 898 609" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#a7C3AED)"/>
+<path d="M 884 671 L 898 671" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#a7C3AED)"/>
+<path d="M 884 371 V 671" stroke="#7C3AED" stroke-width="2" fill="none"/>
+<text x="892" y="702" font-size="11" font-weight="600" fill="#7C3AED" text-anchor="start">Sparky tool calls (HTTP)</text>
+<path d="M 652 545 L 628 545 L 628 254 L 1316 254 L 1316 196 L 1344 196" fill="none" stroke="#01A88D" stroke-width="2" marker-end="url(#a01A88D)"/>
+<text x="1080" y="250" font-size="11" font-weight="600" fill="#01A88D" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">Bedrock Converse (SigV4, Pod Identity)</text>
+<path d="M 1114 400 L 1136 400" fill="none" stroke="#E8590C" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aE8590C)"/>
+<text x="1120" y="392" font-size="10.5" font-weight="600" fill="#E8590C" text-anchor="middle">OTLP</text>
+<path d="M 1262 420 L 1300 420 L 1300 486 L 1358 486" fill="none" stroke="#E8590C" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aE8590C)"/>
+<path d="M 1300 486 L 1300 600 L 1358 600" fill="none" stroke="#E8590C" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aE8590C)"/>
+<path d="M 1300 600 L 1300 658 L 1358 658" fill="none" stroke="#E8590C" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aE8590C)"/>
+<text x="1294" y="742" font-size="11" font-weight="600" fill="#E8590C" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="4">SigV4 OTLP + EMF</text>
+<path d="M 836 648 L 836 884 L 1310 884 L 1310 544 L 1358 544" fill="none" stroke="#E8590C" stroke-width="2.4" stroke-dasharray="5 4" marker-end="url(#aE8590C)"/>
+<text x="1070" y="878" font-size="11" font-weight="600" fill="#E8590C" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">Sparky: ADOT SDK → CloudWatch OTLP endpoints (AgentCore view)</text>
+<path d="M 1420 782 L 1420 770 L 1290 770 L 1290 636 L 1274 636" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-dasharray="3 3" marker-end="url(#a6B7280)"/>
+<text x="1340" y="764" font-size="11" font-weight="600" fill="#6B7280" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="4">image pull</text>
+<rect x="22" y="496" width="150" height="190" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+<text x="30" y="514" font-size="12.5" font-weight="700" fill="#232F3E">Legend</text>
+<path d="M 30 538 H 64" stroke="#2563EB" stroke-width="2.4"/>
+<text x="72" y="542" font-size="11.5" fill="#232F3E">user requests</text>
+<path d="M 30 563 H 64" stroke="#7C3AED" stroke-width="2.4"/>
+<text x="72" y="567" font-size="11.5" fill="#232F3E">agent tool calls</text>
+<path d="M 30 588 H 64" stroke="#01A88D" stroke-width="2.4"/>
+<text x="72" y="592" font-size="11.5" fill="#232F3E">LLM calls</text>
+<path d="M 30 613 H 64" stroke="#C925D1" stroke-width="2.4"/>
+<text x="72" y="617" font-size="11.5" fill="#232F3E">data access</text>
+<path d="M 30 638 H 64" stroke="#E8590C" stroke-width="2.4" stroke-dasharray="5 4"/>
+<text x="72" y="642" font-size="11.5" fill="#232F3E">telemetry (OTel)</text>
+<path d="M 30 663 H 64" stroke="#6B7280" stroke-width="2.4" stroke-dasharray="3 3"/>
+<text x="72" y="667" font-size="11.5" fill="#232F3E">deploy / build</text>
+</svg>

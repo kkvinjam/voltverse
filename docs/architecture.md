@@ -1,5 +1,119 @@
 # VoltVerse architecture
 
+![VoltVerse architecture](images/voltverse-architecture.svg)
+
+*High-resolution PNG: [images/voltverse-architecture.png](images/voltverse-architecture.png). Regenerate with `python3 docs/images/generate_architecture.py docs/images/voltverse-architecture.svg`.*
+
+## Component overview
+
+```mermaid
+flowchart LR
+  shopper([Shopper browser]) -->|HTTPS| cf[Amazon CloudFront]
+  cf -->|VPC origin| alb[Internal ALB + AWS WAF]
+  subgraph eks[Amazon EKS Auto Mode]
+    subgraph ns[namespace voltverse]
+      sf[storefront<br/>React + nginx gateway]
+      cat[catalog]; inv[inventory]; cart[cart]; chk[checkout]; pay[payment]; ord[orders]
+      sparky[[Sparky assistant<br/>Strands Agents]]
+      lg[loadgen]
+    end
+    subgraph obs[namespace observability]
+      col[ADOT Collector]
+    end
+  end
+  alb -->|TargetGroupBinding| sf
+  sf -->|REST /api/*| cat & inv & cart & chk & ord
+  sf -->|SSE /api/assistant| sparky
+  chk --> cart & cat & inv & pay & ord
+  ord --> inv & pay
+  sparky -->|13 tools| cat & inv & cart & chk & ord & pay
+  sparky -->|Converse| bedrock[(Amazon Bedrock<br/>Claude)]
+  cat & inv & cart & ord & pay --> ddb[(Amazon DynamoDB)]
+  lg --> sf
+  ns -. OTLP .-> col
+  col -. SigV4 OTLP traces + logs, EMF metrics .-> cw[(Amazon CloudWatch)]
+  sparky -. ADOT SDK direct: traces + logs .-> cw
+```
+
+## Sequence: placing an order
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant G as storefront (nginx)
+  participant C as checkout
+  participant K as cart
+  participant P as catalog
+  participant I as inventory
+  participant Y as payment
+  participant O as orders
+  B->>G: POST /api/checkout/checkout
+  G->>C: POST /checkout
+  C->>K: GET /carts/{id}
+  C->>P: GET /products/{id} (re-price each line)
+  C->>I: POST /reservations (DynamoDB transaction)
+  alt insufficient stock
+    I-->>C: 409
+    C-->>B: 409 out of stock
+  end
+  C->>Y: POST /payments/authorize
+  alt declined / processor error
+    Y-->>C: 402 / 502
+    C->>I: POST /reservations/{order}/release
+    C-->>B: 402 / 502
+  end
+  C->>O: POST /orders
+  C->>Y: capture
+  C->>I: commit
+  C->>K: DELETE /carts/{id}
+  C-->>B: 201 order (tracking number)
+```
+
+## Sequence: one Sparky turn
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant B as Browser chat widget
+  participant G as storefront (nginx)
+  participant S as Sparky (Strands Agent)
+  participant M as Amazon Bedrock (Claude)
+  participant T as Microservices (tools)
+  participant W as CloudWatch
+  B->>G: POST /api/assistant/chat/stream (history, cartId)
+  G->>S: POST /chat/stream (unbuffered SSE)
+  S->>S: build Agent (system prompt, 13 tools bound to cartId, session.id baggage)
+  loop event-loop cycle (max 10 turns)
+    S->>M: ConverseStream (messages + tool specs)
+    M-->>S: text deltas / toolUse
+    S-->>B: SSE delta / tool events
+    opt tool requested
+      S->>T: HTTP (e.g. GET /products?q=…, POST /carts/{id}/items)
+      T-->>S: JSON result
+    end
+  end
+  S-->>B: SSE done (toolsUsed, cartChanged)
+  S--)W: spans (invoke_agent, chat, execute_tool) + logs via ADOT SDK
+  T--)W: service spans via ADOT Collector (same trace id)
+```
+
+## Deployment flow
+
+```mermaid
+flowchart LR
+  op([Operator / StackSets / Workshop Studio]) --> cfn[CloudFormation stack]
+  cfn --> infra[VPC · EKS Auto Mode · DynamoDB · ECR · ALB · WAF · CloudFront · IAM · log groups · dashboard]
+  cfn --> cr[Custom resource Lambda]
+  cr -->|StartBuild| cb[CodeBuild deployer in VPC]
+  src[(GitHub repo or S3 zip)] --> cb
+  cb -->|docker build/push| ecr[(Amazon ECR)]
+  cb -->|seed| ddb[(DynamoDB)]
+  cb -->|enable if off| ts[CloudWatch Transaction Search]
+  cb -->|kubectl apply k8s/*.yaml| eks[EKS cluster]
+  cb -->|SUCCESS / FAILED| cfn
+```
+
 ## Request path
 
 ```

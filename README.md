@@ -4,22 +4,9 @@ VoltVerse is a sleek, fully working electronics store built as a **microservices
 
 It is packaged as **one CloudFormation template**, so you can launch identical copies in many AWS accounts for workshops, demos, and observability training.
 
-```
-                         ┌──────────────── Amazon EKS (Auto Mode) ─────────────────────────────┐
- Browser ──HTTPS──► CloudFront ──VPC origin──► internal ALB ──► storefront (React + nginx gateway)
-   ▲  WAF (rate caps,        │                                     │
-   │  optional allow-list)   │      ┌──────────┬──────────┬────────┼─────────┬──────────┐
-   │                         │      ▼          ▼          ▼        ▼         ▼          ▼
-   │                         │   catalog   inventory     cart   checkout   orders   assistant ──► Amazon Bedrock
-   │                         │      │          │          │      │  │  │     │      (Strands)     (Claude)
-   │                         │      │          │          │      │  │  └► payment     │ 13 tools call the
-   │                         │      ▼          ▼          ▼      ▼  ▼        ▼        │ services above
-   │                         │   ───────────────── Amazon DynamoDB ──────────────     │
-   │                         │                                                        │
-   │                         │   services ──OTLP──► ADOT Collector ──SigV4 OTLP──► CloudWatch (traces → Transaction Search,
-   │                         │                                     └──EMF───────► logs) + CloudWatch Metrics
-   │                         └── Sparky ──ADOT SDK, SigV4 OTLP──► CloudWatch GenAI Observability (Bedrock AgentCore view)
-```
+![VoltVerse architecture](docs/images/voltverse-architecture.svg)
+
+More diagrams (component overview, checkout and agent sequences, deployment flow) are in [docs/architecture.md](docs/architecture.md).
 
 ## What's inside
 
