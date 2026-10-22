@@ -16,10 +16,9 @@ It is packaged as **one CloudFormation template**, so you can launch identical c
    │                         │      ▼          ▼          ▼      ▼  ▼        ▼        │ services above
    │                         │   ───────────────── Amazon DynamoDB ──────────────     │
    │                         │                                                        │
-   │                         │   every pod ──OTLP──► OpenTelemetry Collector (ADOT) ──┼──► AWS X-Ray (traces)
-   │                         │                                                        ├──► CloudWatch Metrics (EMF)
-   │                         └────────────────────────────────────────────────────────├──► CloudWatch Logs
-   │                                                                                  └──► any OTLP endpoint (optional)
+   │                         │   services ──OTLP──► ADOT Collector ──SigV4 OTLP──► CloudWatch (traces → Transaction Search,
+   │                         │                                     └──EMF───────► logs) + CloudWatch Metrics
+   │                         └── Sparky ──ADOT SDK, SigV4 OTLP──► CloudWatch GenAI Observability (Bedrock AgentCore view)
 ```
 
 ## What's inside
@@ -35,7 +34,7 @@ It is packaged as **one CloudFormation template**, so you can launch identical c
 | **orders** | Python / FastAPI | Orders, simulated shipment tracking, cancellations (refund + restock), returns |
 | **assistant** | Python / **Strands Agents** + Bedrock | **Sparky**: 13 tools, streaming replies (SSE), bounded agent loop |
 | **loadgen** | Python | Synthetic shoppers, so dashboards and traces always have data (never calls Bedrock) |
-| **otel-collector** | AWS Distro for OpenTelemetry | Receives OTLP from every pod and exports to X-Ray, CloudWatch, and an optional external OTLP endpoint |
+| **otel-collector** | AWS Distro for OpenTelemetry | Receives OTLP from the microservices. Forwards traces and logs to the CloudWatch OTLP endpoints (SigV4), metrics to CloudWatch as EMF, and optionally to an external OTLP endpoint. |
 
 ### Sparky's tools
 
@@ -111,7 +110,8 @@ scripts/launch-stack.sh --s3-bucket my-artifacts-bucket --s3-key voltverse-sourc
 | `SourceS3Bucket` / `SourceS3Key` | empty / `voltverse-source.zip` | S3 source. Overrides Git when set. |
 | `BedrockModelId` | `global.anthropic.claude-opus-5-5` | Model or inference profile used by Sparky |
 | `AssistantRequestsPer5Min` | `1000` | WAF cap on **total** assistant requests (Bedrock cost guard) |
-| `ExternalOtlpEndpoint` | empty | Also send all telemetry to this OTLP/HTTP endpoint |
+| `EnableTransactionSearch` | `true` | Enable CloudWatch Transaction Search in the account/region if it's off. Required for traces and the AgentCore view. |
+| `ExternalOtlpEndpoint` | empty | Also send the microservices' telemetry (and Sparky's metrics) to this OTLP/HTTP endpoint |
 | `ParticipantRoleArn` | empty | IAM role granted EKS cluster-admin (for example a workshop participant role) |
 | `EnablePublicClusterEndpoint` / `PublicEndpointCidrs` | `false` / empty | Expose the IAM-authenticated EKS API so `kubectl` works from laptops or CloudShell. Restrict it with CIDRs. |
 | `AllowedViewerCidrs` | empty | Restrict the **store** to these CIDRs (WAF). Empty means public. |
@@ -120,7 +120,7 @@ scripts/launch-stack.sh --s3-bucket my-artifacts-bucket --s3-key voltverse-sourc
 
 ### Outputs
 
-`StorefrontUrl`, `DashboardUrl`, `TraceMapUrl`, `ApplicationLogGroup`, `ClusterName`, `KubeconfigCommand`, `DeployerProject`.
+`StorefrontUrl`, `DashboardUrl`, `GenAIObservabilityUrl`, `TraceMapUrl`, `ApplicationLogGroup`, `AgentLogGroup`, `ClusterName`, `KubeconfigCommand`, `DeployerProject`.
 
 ---
 
@@ -179,13 +179,19 @@ Notes for workshop operators:
 
 ## Observability
 
-Everything uses **standard OpenTelemetry**. The Python services run under `opentelemetry-instrument`, configured purely through `OTEL_*` environment variables. Strands emits GenAI semantic-convention spans for agent cycles, model calls, and tool calls.
+Everything uses **OpenTelemetry**, and all logs, metrics, and traces land in **Amazon CloudWatch**.
+- Every Python service runs the **AWS Distro for OpenTelemetry (ADOT) Python SDK** under `opentelemetry-instrument`, configured purely through `OTEL_*` environment variables.
+- The microservices export OTLP to the in-cluster ADOT Collector, which forwards to the **CloudWatch OTLP endpoints** (`xray.<region>.amazonaws.com/v1/traces`, `logs.<region>.amazonaws.com/v1/logs`) and writes metrics as EMF.
+- **Sparky** is configured as a GenAI agent for **CloudWatch GenAI Observability → Bedrock AgentCore**. AgentCore doesn't support agents that export through a collector, so the ADOT SDK (`AGENT_OBSERVABILITY_ENABLED=true`) sends Sparky's spans and logs directly to CloudWatch. It uses the agent log group `/aws/bedrock-agentcore/runtimes/<env>-sparky` and propagates `session.id`.
+- Strands emits GenAI semantic-convention spans for agent invocations, event-loop cycles, model calls, and tool calls.
+- **CloudWatch Transaction Search** must be on for the OTLP traces endpoint and the AgentCore view. The deployer enables it if it's off (`EnableTransactionSearch`, default `true`). It's an account-level setting and is left on when the stack is deleted.
 
 | Signal | Where |
 |---|---|
-| Traces | **X-Ray / CloudWatch trace map** (`TraceMapUrl`). If the account has X-Ray *Transaction Search* enabled, spans are stored in the `aws/spans` log group; use **CloudWatch → Transaction Search** to find them, because only a sample is indexed as trace summaries. Searchable annotations: `voltverse.order.id`, `voltverse.checkout.outcome`, `voltverse.payment.status`, `session.id`. |
+| Traces | **CloudWatch → Transaction Search** (spans in `aws/spans`; query any span attribute, e.g. `voltverse.order.id`, `session.id`) and the trace map (`TraceMapUrl`) |
+| AI agent | **CloudWatch → GenAI Observability → Bedrock AgentCore** (`GenAIObservabilityUrl`): Sparky's sessions, traces, model and tool spans, token usage, latency, and errors. Logs are in `AgentLogGroup` and metrics in the `bedrock-agentcore` namespace. | Searchable annotations: `voltverse.order.id`, `voltverse.checkout.outcome`, `voltverse.payment.status`, `session.id`. |
 | Metrics | CloudWatch namespace **`VoltVerse`** and the `DashboardUrl` dashboard: HTTP latency per service, checkout outcomes, revenue, payment outcomes, agent latency, tool usage, and `gen_ai.*` token usage |
-| Logs | `ApplicationLogGroup`. JSON logs carry `trace_id` / `span_id` for log↔trace correlation. |
+| Logs | `ApplicationLogGroup` (microservices, via the OTLP logs endpoint) and `AgentLogGroup` (Sparky). Every record carries the trace and span ids for log↔trace correlation. |
 | Anything else | Set `ExternalOtlpEndpoint`, or edit `k8s/10-otel-collector.yaml` |
 
 **Sparky traffic:** `scripts/sparky-traffic.py <StorefrontUrl> --minutes 15 --rate 8` runs realistic multi-turn conversations: recommendations, comparisons, cart changes, quotes, order tracking, cancellations, payments, policies, and off-topic requests. It creates real orders for the order scenarios first. Every turn calls Bedrock, so mind the cost. The gateway allows about 12 assistant requests per minute per IP.

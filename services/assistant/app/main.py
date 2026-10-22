@@ -18,7 +18,7 @@ from collections.abc import AsyncIterator
 
 from botocore.config import Config
 from fastapi.responses import StreamingResponse
-from opentelemetry import metrics, trace
+from opentelemetry import baggage, context, metrics, trace
 from pydantic import BaseModel, Field
 from strands import Agent
 from strands.models import BedrockModel
@@ -112,6 +112,12 @@ def _agent(req: ChatRequest, session_id: str, history: list[dict], tools_used: l
     )
 
 
+def _with_session(session_id: str):
+    """Put session.id in OTel baggage; the ADOT SDK copies it onto every agent span so the
+    CloudWatch GenAI Observability (AgentCore) view can group a conversation into a session."""
+    return context.attach(baggage.set_baggage("session.id", session_id))
+
+
 def _summary(session_id: str, tools_used: list[str]) -> dict:
     for name in tools_used:
         tool_counter.add(1, {"tool": name})
@@ -138,12 +144,14 @@ async def chat(req: ChatRequest):
     tools_used: list[str] = []
     agent = _agent(req, session_id, history, tools_used)
     start = time.perf_counter()
+    token = _with_session(session_id)
     try:
         result = await agent.invoke_async(prompt, limits=AGENT_LIMITS)
     except Exception as e:  # Bedrock throttling, access denied, model not enabled, ...
         _failed(span, e)
         raise ServiceError(503, "assistant_unavailable", UNAVAILABLE) from e
     finally:
+        context.detach(token)
         chat_latency.record(time.perf_counter() - start, {"model": MODEL_ID})
     chat_counter.add(1, {"outcome": "success"})
     reply = str(result).strip() or "Sorry, I didn't catch that - could you rephrase?"
@@ -169,6 +177,7 @@ async def chat_stream(req: ChatRequest):
 
     async def events() -> AsyncIterator[str]:
         start = time.perf_counter()
+        token = _with_session(session_id)
         seen_tools: set[str] = set()
         stream = agent.stream_async(prompt, limits=AGENT_LIMITS).__aiter__()
         pending = asyncio.ensure_future(stream.__anext__())
@@ -199,6 +208,7 @@ async def chat_stream(req: ChatRequest):
         finally:
             if not pending.done():
                 pending.cancel()
+            context.detach(token)
             chat_latency.record(time.perf_counter() - start, {"model": MODEL_ID})
 
     return StreamingResponse(events(), media_type="text/event-stream",

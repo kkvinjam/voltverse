@@ -13,14 +13,18 @@ data:
   PAYMENTS_TABLE: "${PAYMENTS_TABLE}"
   BEDROCK_MODEL_ID: "${BEDROCK_MODEL_ID}"
   HOME: /tmp
-  # --- OpenTelemetry (standard OTEL_* variables, read by opentelemetry-instrument) ---
+  # --- OpenTelemetry (standard OTEL_* variables, read by opentelemetry-instrument + the ADOT SDK) ---
+  # Microservices send OTLP to the in-cluster collector, which forwards to the CloudWatch OTLP endpoints.
+  # The Sparky agent overrides traces/logs to go straight to CloudWatch (see k8s/30-services.yaml).
+  OTEL_PYTHON_DISTRO: "aws_distro"
+  OTEL_PYTHON_CONFIGURATOR: "aws_configurator"
+  OTEL_AWS_APPLICATION_SIGNALS_ENABLED: "false"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
   OTEL_TRACES_EXPORTER: "otlp"
   OTEL_METRICS_EXPORTER: "otlp"
   OTEL_LOGS_EXPORTER: "otlp"
   OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
-  OTEL_PYTHON_ID_GENERATOR: "xray"
   OTEL_PROPAGATORS: "tracecontext,baggage,xray"
   OTEL_TRACES_SAMPLER: "parentbased_always_on"
   OTEL_METRIC_EXPORT_INTERVAL: "30000"

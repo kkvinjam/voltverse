@@ -1,9 +1,12 @@
 # OpenTelemetry Collector (AWS Distro for OpenTelemetry).
-# Every service sends OTLP traces, metrics and logs here; the collector fans out to
-#   traces  -> AWS X-Ray            (awsxray)
-#   metrics -> CloudWatch Metrics   (awsemf, namespace "VoltVerse")
-#   logs    -> CloudWatch Logs      (awscloudwatchlogs)
+# Every microservice sends OTLP traces, metrics and logs here; the collector forwards to Amazon CloudWatch:
+#   traces  -> CloudWatch OTLP traces endpoint (xray.<region>.amazonaws.com/v1/traces, SigV4)
+#              -> spans stored in the aws/spans log group (CloudWatch Transaction Search)
+#   logs    -> CloudWatch OTLP logs endpoint (logs.<region>.amazonaws.com/v1/logs, SigV4)
+#   metrics -> CloudWatch Metrics via Embedded Metric Format (awsemf, namespace "VoltVerse")
 # and optionally to any external OTLP endpoint (set ExternalOtlpEndpoint on the stack).
+# The Sparky agent exports traces/logs directly with the ADOT SDK (required by AgentCore observability)
+# and only sends its metrics here.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -20,6 +23,12 @@ data:
     extensions:
       health_check:
         endpoint: 0.0.0.0:13133
+      sigv4auth/xray:
+        region: "${AWS_REGION}"
+        service: xray
+      sigv4auth/logs:
+        region: "${AWS_REGION}"
+        service: logs
 
     receivers:
       otlp:
@@ -45,14 +54,10 @@ data:
           - { key: k8s.cluster.name, value: "${CLUSTER_NAME}", action: upsert }
 
     exporters:
-      awsxray:
-        region: "${AWS_REGION}"
-        # Become searchable X-Ray annotations
-        indexed_attributes:
-          - voltverse.order.id
-          - voltverse.checkout.outcome
-          - voltverse.payment.status
-          - session.id
+      otlphttp/cloudwatch-traces:
+        traces_endpoint: "https://xray.${AWS_REGION}.amazonaws.com/v1/traces"
+        compression: gzip
+        auth: { authenticator: sigv4auth/xray }
       awsemf:
         region: "${AWS_REGION}"
         namespace: VoltVerse
@@ -70,18 +75,21 @@ data:
             metric_name_selectors: ["^voltverse\\..*"]
           - dimensions: [[service.name], [service.name, gen_ai.request.model]]
             metric_name_selectors: ["^gen_ai\\..*", "^strands\\..*"]
-      awscloudwatchlogs:
-        region: "${AWS_REGION}"
-        log_group_name: "${APP_LOG_GROUP}"
-        log_stream_name: otel-logs
+      otlphttp/cloudwatch-logs:
+        logs_endpoint: "https://logs.${AWS_REGION}.amazonaws.com/v1/logs"
+        compression: gzip
+        headers:
+          x-aws-log-group: "${APP_LOG_GROUP}"
+          x-aws-log-stream: otel-logs
+        auth: { authenticator: sigv4auth/logs }
       # __EXTERNAL_EXPORTER__ (replaced at deploy time when ExternalOtlpEndpoint is set)
     service:
-      extensions: [health_check]
+      extensions: [health_check, sigv4auth/xray, sigv4auth/logs]
       pipelines:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [awsxray__EXTERNAL_LIST__]
+          exporters: [otlphttp/cloudwatch-traces__EXTERNAL_LIST__]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
@@ -89,7 +97,7 @@ data:
         logs:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [awscloudwatchlogs__EXTERNAL_LIST__]
+          exporters: [otlphttp/cloudwatch-logs__EXTERNAL_LIST__]
 ---
 apiVersion: apps/v1
 kind: Deployment

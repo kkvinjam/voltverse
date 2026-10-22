@@ -11,9 +11,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /srv
 COPY common/requirements.txt /tmp/common-requirements.txt
 COPY ${SERVICE}/requirements.txt /tmp/service-requirements.txt
-RUN pip install -r /tmp/common-requirements.txt -r /tmp/service-requirements.txt \
- && opentelemetry-bootstrap -a requirements > /tmp/otel-requirements.txt \
- && pip install -r /tmp/otel-requirements.txt
+# aws-opentelemetry-distro already bundles the instrumentation libraries, so no opentelemetry-bootstrap step.
+RUN pip install -r /tmp/common-requirements.txt -r /tmp/service-requirements.txt
 
 COPY common/voltcommon ./voltcommon
 COPY ${SERVICE}/app ./app

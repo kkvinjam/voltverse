@@ -501,13 +501,23 @@ spec:
             - configMapRef: { name: voltverse-config }
             - configMapRef: { name: voltverse-chaos }
           env:
-            - { name: OTEL_SERVICE_NAME, value: assistant }
+            # Sparky is observed as a GenAI agent in CloudWatch GenAI Observability (Bedrock AgentCore view).
+            # AgentCore requires the ADOT SDK to export directly (not via a collector): traces -> X-Ray OTLP
+            # endpoint (lands in aws/spans via Transaction Search), logs + EMF metrics -> the agent log group.
+            # Metrics also go to the collector so the VoltVerse dashboard keeps working.
+            - { name: OTEL_SERVICE_NAME, value: sparky }
+            - { name: AGENT_OBSERVABILITY_ENABLED, value: "true" }
+            - { name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, value: "https://xray.${AWS_REGION}.amazonaws.com/v1/traces" }
+            - { name: OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, value: "https://logs.${AWS_REGION}.amazonaws.com/v1/logs" }
+            - { name: OTEL_EXPORTER_OTLP_LOGS_HEADERS, value: "x-aws-log-group=${AGENT_LOG_GROUP},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore" }
+            - { name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, value: "http://otel-collector.observability:4318/v1/metrics" }
+            - { name: OTEL_METRICS_EXPORTER, value: "otlp,awsemf" }
             - name: POD_NAME
               valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: NODE_NAME
               valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=assistant,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
+              value: "aws.log.group.names=${AGENT_LOG_GROUP},service.namespace=voltverse,service.version=${IMAGE_TAG},deployment.environment.name=${ENVIRONMENT_NAME},k8s.namespace.name=voltverse,k8s.deployment.name=assistant,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
           resources:
             requests: { cpu: 250m, memory: 384Mi }
             limits: { memory: 1Gi }

@@ -60,20 +60,30 @@ Cancelling an order (`orders`) releases the reservation in `inventory` and refun
 - **Limits:** `limits={"turns": 10}` caps model↔tool cycles. `max_tokens=4096` caps each response.
 - **Model:** `BedrockModel(model_id=BEDROCK_MODEL_ID)` via the Bedrock Converse API. IAM allows `bedrock:InvokeModel*` on foundation models and the account's inference profiles.
 
-## Telemetry pipeline
+## Telemetry pipeline (everything lands in Amazon CloudWatch)
 
 ```
-service pod  (opentelemetry-instrument: FastAPI, httpx, botocore, logging; Strands GenAI spans)
+microservice pods (ADOT Python SDK under opentelemetry-instrument: FastAPI, httpx, botocore, logging)
    │ OTLP/HTTP  http://otel-collector.observability:4318
    ▼
 ADOT collector ─ memory_limiter → resource(cloud.*, k8s.cluster.name) → batch
-   ├─ traces  → awsxray            (X-Ray ids via OTEL_PYTHON_ID_GENERATOR=xray)
-   ├─ metrics → awsemf             (namespace VoltVerse; dimension sets whitelisted to control cardinality)
-   ├─ logs    → awscloudwatchlogs  (trace_id/span_id on every record)
+   ├─ traces  → otlphttp + sigv4auth → https://xray.<region>.amazonaws.com/v1/traces → aws/spans (Transaction Search)
+   ├─ logs    → otlphttp + sigv4auth → https://logs.<region>.amazonaws.com/v1/logs   → ApplicationLogGroup
+   ├─ metrics → awsemf (namespace VoltVerse; dimension sets allow-listed to control cardinality)
    └─ (optional) otlphttp/external → ExternalOtlpEndpoint
+
+Sparky pod (ADOT SDK, AGENT_OBSERVABILITY_ENABLED=true, Strands GenAI spans, session.id baggage)
+   ├─ traces  → SigV4 → https://xray.<region>.amazonaws.com/v1/traces  ─┐  CloudWatch GenAI Observability
+   ├─ logs    → SigV4 → https://logs.<region>.amazonaws.com/v1/logs    ─┤  → Bedrock AgentCore view
+   ├─ metrics → EMF (namespace bedrock-agentcore) in the agent log group ┘  (/aws/bedrock-agentcore/runtimes/<env>-sparky)
+   └─ metrics → OTLP → collector → VoltVerse namespace (store dashboard)
 ```
 
-All configuration uses standard `OTEL_*` variables in the `voltverse-config` ConfigMap (`k8s/20-config.yaml`). To send telemetry somewhere else, change `OTEL_EXPORTER_OTLP_ENDPOINT` or add exporters to the collector. The application code doesn't change.
+Why Sparky bypasses the collector: AgentCore observability for agents hosted outside the AgentCore runtime requires the ADOT SDK (or the ADOT Lambda layer). The ADOT Collector isn't supported for agent telemetry. W3C/X-Ray trace context still propagates on Sparky's tool calls, so its spans and the microservice spans share one trace id.
+
+CloudWatch Transaction Search must be enabled in the account and region, because the OTLP traces endpoint stores spans in `aws/spans`. The deployer enables it when it's off (resource policy for X-Ray on `aws/spans`, then `UpdateTraceSegmentDestination=CloudWatchLogs`).
+
+All configuration uses `OTEL_*` variables: `voltverse-config` in `k8s/20-config.yaml`, and Sparky's overrides in `k8s/30-services.yaml`. Application code is unchanged.
 
 ## IAM (EKS Pod Identity)
 
@@ -84,8 +94,8 @@ All configuration uses standard `OTEL_*` variables in the `voltverse-config` Con
 | cart | `GetItem/PutItem/DeleteItem` on carts |
 | orders | `GetItem/PutItem/UpdateItem` on orders |
 | payment | `GetItem/PutItem/UpdateItem/Query` on payments (+ GSI) |
-| assistant | `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream` |
-| otel-collector | X-Ray writes, CloudWatch Logs writes to the two VoltVerse log groups |
+| assistant (Sparky) | `bedrock:InvokeModel*`; `AWSXrayWriteOnlyAccess`; CloudWatch Logs writes to the agent log group |
+| otel-collector | `AWSXrayWriteOnlyAccess`; CloudWatch Logs writes to the VoltVerse application and metrics log groups |
 | checkout, storefront, loadgen | none (no AWS API calls) |
 
 ## Deployment mechanics

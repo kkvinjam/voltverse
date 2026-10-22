@@ -7,7 +7,7 @@ set -euo pipefail
 : "${AWS_REGION:?}" "${ACCOUNT_ID:?}" "${CLUSTER_NAME:?}" "${REPO_PREFIX:?}" "${TARGET_GROUP_ARN:?}"
 : "${PRODUCTS_TABLE:?}" "${INVENTORY_TABLE:?}" "${CARTS_TABLE:?}" "${ORDERS_TABLE:?}" "${PAYMENTS_TABLE:?}"
 : "${BEDROCK_MODEL_ID:?}" "${APP_LOG_GROUP:?}" "${METRICS_LOG_GROUP:?}" "${ENVIRONMENT_NAME:?}"
-: "${VPC_ID:?}" "${ALB_SECURITY_GROUP_ID:?}"
+: "${VPC_ID:?}" "${ALB_SECURITY_GROUP_ID:?}" "${AGENT_LOG_GROUP:?}"
 
 export ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 export IMAGE_TAG="${IMAGE_TAG:-b${CODEBUILD_BUILD_NUMBER:-$(date +%s)}}"
@@ -15,6 +15,28 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+
+log "Checking CloudWatch Transaction Search"
+# Spans sent to the CloudWatch OTLP traces endpoint are stored in the aws/spans log group, which needs
+# Transaction Search (account + region level). Only turned on when it is off; never turned off by this stack.
+DEST="$(aws xray get-trace-segment-destination --query Destination --output text)"
+if [ "$DEST" = "CloudWatchLogs" ]; then
+  echo "Transaction Search already enabled"
+elif [ "${ENABLE_TRANSACTION_SEARCH:-true}" = "true" ]; then
+  aws logs put-resource-policy --policy-name "TransactionSearchXRayAccess" --policy-document "$(cat <<JSON
+{"Version": "2012-10-17", "Statement": [{"Sid": "TransactionSearchXRayAccess", "Effect": "Allow",
+  "Principal": {"Service": "xray.amazonaws.com"}, "Action": "logs:PutLogEvents",
+  "Resource": ["arn:aws:logs:${AWS_REGION}:${ACCOUNT_ID}:log-group:aws/spans:*",
+               "arn:aws:logs:${AWS_REGION}:${ACCOUNT_ID}:log-group:/aws/application-signals/data:*"],
+  "Condition": {"ArnLike": {"aws:SourceArn": "arn:aws:xray:${AWS_REGION}:${ACCOUNT_ID}:*"},
+                "StringEquals": {"aws:SourceAccount": "${ACCOUNT_ID}"}}}]}
+JSON
+)" >/dev/null
+  aws xray update-trace-segment-destination --destination CloudWatchLogs >/dev/null
+  echo "Transaction Search enabled (spans -> aws/spans)"
+else
+  echo "WARNING: Transaction Search is off and EnableTransactionSearch=false - traces sent to the CloudWatch OTLP endpoint will be rejected"
+fi
 
 log "Allowing the CloudFront VPC origin to reach the internal ALB"
 # CloudFront creates this security group in our VPC when the VPC origin is created.

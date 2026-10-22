@@ -27,7 +27,9 @@ x-service: &service
     OTEL_METRICS_EXPORTER: otlp
     OTEL_LOGS_EXPORTER: otlp
     OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
-    OTEL_PYTHON_ID_GENERATOR: xray
+    OTEL_PYTHON_DISTRO: aws_distro
+    OTEL_PYTHON_CONFIGURATOR: aws_configurator
+    OTEL_AWS_APPLICATION_SIGNALS_ENABLED: "false"
     OTEL_PROPAGATORS: tracecontext,baggage,xray
     OTEL_SEMCONV_STABILITY_OPT_IN: http,gen_ai_latest_experimental
     OTEL_PYTHON_EXCLUDED_URLS: health,ready
@@ -101,7 +103,7 @@ services:
     build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: assistant } }
     environment:
       <<: *env
-      OTEL_SERVICE_NAME: assistant
+      OTEL_SERVICE_NAME: sparky
       BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-global.anthropic.claude-opus-5-5}
       AWS_PROFILE: ${AWS_PROFILE:-default}
       AWS_ACCESS_KEY_ID: ""

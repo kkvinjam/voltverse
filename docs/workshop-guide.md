@@ -21,7 +21,7 @@ Suggested hands-on labs, about 2 hours in total. Each lab works with the stack d
 ## Lab 2 — Follow a request across services (20 min)
 
 1. Open **CloudWatch → Trace Map** (`TraceMapUrl`) and find `storefront → checkout → {cart, catalog, inventory, payment, orders}` and `→ DynamoDB`.
-2. Search traces by annotation: `annotation.voltverse_order_id = "VV-…"`, using your order number. X-Ray converts dots in annotation names to underscores.
+2. Open **CloudWatch → Transaction Search** and filter spans by attribute `voltverse.order.id = VV-…`, using your order number. Every span attribute is searchable, because spans arrive through the OTLP endpoint.
 3. Open the trace and expand it:
    - `checkout.reserve_inventory` contains a DynamoDB `TransactWriteItems` call
    - `checkout.authorize_payment` includes the simulated processor latency
@@ -35,14 +35,15 @@ Suggested hands-on labs, about 2 hours in total. Each lab works with the stack d
 ## Lab 3 — Observe the AI agent (20 min)
 
 1. Have a multi-step conversation with Sparky that compares products and checks the cart.
-2. Find the `assistant` trace for it. Agent spans are nested:
+2. Open **CloudWatch → GenAI Observability → Bedrock AgentCore** (`GenAIObservabilityUrl`) and select the **sparky** agent. Browse sessions, where each chat is one `session.id`, plus traces, token usage and error rates.
+3. Open a trace for your session. Agent spans are nested:
    - `invoke_agent sparky`
    - → `execute_event_loop_cycle`
    - → `chat` (the Bedrock call, with `gen_ai.usage.*` token attributes)
    - → `execute_tool search_products`
    - → HTTP client span → `catalog` server span
-3. On the dashboard, look at **Sparky: tool calls** and **end-to-end latency**. In CloudWatch Metrics, browse `VoltVerse` → `gen_ai.client.token.usage` for token consumption.
-4. Discussion: which tools dominate latency, and how would you cache them?
+4. On the store dashboard, look at **Sparky: tool calls** and **end-to-end latency**. In CloudWatch Metrics, see `VoltVerse` → `gen_ai.client.token.usage` and the `bedrock-agentcore` namespace.
+5. Discussion: which tools dominate latency, and how would you cache them?
 
 ## Lab 4 — Break things and find out (30 min)
 

@@ -13,7 +13,7 @@ Metadata:
       - Label: { default: "AI assistant" }
         Parameters: [BedrockModelId, AssistantRequestsPer5Min]
       - Label: { default: "Observability" }
-        Parameters: [ExternalOtlpEndpoint, LogRetentionDays]
+        Parameters: [EnableTransactionSearch, ExternalOtlpEndpoint, LogRetentionDays]
       - Label: { default: "Access" }
         Parameters: [ParticipantRoleArn, EnablePublicClusterEndpoint, PublicEndpointCidrs, AllowedViewerCidrs]
       - Label: { default: "Infrastructure" }
@@ -52,6 +52,14 @@ Parameters:
     Default: 1000
     MinValue: 10
     Description: WAF cap on total AI-assistant requests per 5 minutes across all visitors (Bedrock cost guard).
+  EnableTransactionSearch:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Turn on CloudWatch Transaction Search for this account/region if it is off (account-level setting: X-Ray spans
+      are stored in the aws/spans log group). Required for the CloudWatch OTLP traces endpoint and for the
+      Bedrock AgentCore view of the Sparky agent. It is left enabled when the stack is deleted.
   ExternalOtlpEndpoint:
     Type: String
     Default: ""
@@ -429,6 +437,15 @@ Resources:
       LogGroupName: !Sub /aws/voltverse/${EnvironmentName}/metrics
       RetentionInDays: !Ref LogRetentionDays
 
+  # Agent log group for CloudWatch GenAI Observability (Bedrock AgentCore view). Agents hosted outside the
+  # AgentCore runtime use the same naming convention: /aws/bedrock-agentcore/runtimes/<agent-id>.
+  AgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/bedrock-agentcore/runtimes/${EnvironmentName}-sparky
+      RetentionInDays: !Ref LogRetentionDays
+
   # ---------------------------------------------------------------- Workload IAM (EKS Pod Identity)
   CatalogRole:
     Type: AWS::IAM::Role
@@ -533,6 +550,8 @@ Resources:
   AssistantRole:
     Type: AWS::IAM::Role
     Properties:
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSXrayWriteOnlyAccess  # spans -> CloudWatch OTLP traces endpoint
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -551,10 +570,25 @@ Resources:
                 Resource:
                   - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
                   - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+        - PolicyName: agent-telemetry
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # logs and EMF metrics -> CloudWatch OTLP logs endpoint / agent log group
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource:
+                  - !GetAtt AgentLogGroup.Arn
+                  - !Sub "${AgentLogGroup.Arn}:log-stream:*"
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: "*"
 
   CollectorRole:
     Type: AWS::IAM::Role
     Properties:
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSXrayWriteOnlyAccess  # CloudWatch OTLP traces endpoint
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -569,10 +603,7 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords, xray:GetSamplingRules, xray:GetSamplingTargets]
-                Resource: "*"
-              - Effect: Allow
-                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams, logs:PutRetentionPolicy]
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
                 Resource:
                   - !GetAtt AppLogGroup.Arn
                   - !GetAtt MetricsLogGroup.Arn
@@ -802,6 +833,10 @@ Resources:
               - Effect: Allow
                 Action: elasticloadbalancing:DescribeTargetHealth
                 Resource: "*"
+              - Effect: Allow  # enable CloudWatch Transaction Search (account-level, only when it is off)
+                Action: [xray:GetTraceSegmentDestination, xray:UpdateTraceSegmentDestination, logs:PutResourcePolicy,
+                         logs:DescribeResourcePolicies]
+                Resource: "*"
               - Effect: Allow
                 Action: [ec2:AuthorizeSecurityGroupIngress, ec2:RevokeSecurityGroupIngress]
                 Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${AlbSecurityGroup.GroupId}"
@@ -860,6 +895,8 @@ Resources:
           - { Name: PAYMENTS_TABLE, Value: !Ref PaymentsTable }
           - { Name: APP_LOG_GROUP, Value: !Ref AppLogGroup }
           - { Name: METRICS_LOG_GROUP, Value: !Ref MetricsLogGroup }
+          - { Name: AGENT_LOG_GROUP, Value: !Ref AgentLogGroup }
+          - { Name: ENABLE_TRANSACTION_SEARCH, Value: !Ref EnableTransactionSearch }
           - { Name: BEDROCK_MODEL_ID, Value: !Ref BedrockModelId }
           - { Name: EXTERNAL_OTLP_ENDPOINT, Value: !Ref ExternalOtlpEndpoint }
           - { Name: SOURCE_REPO_URL, Value: !Ref SourceRepoUrl }
@@ -987,6 +1024,7 @@ Resources:
       - PaymentPodIdentity
       - AssistantPodIdentity
       - CollectorPodIdentity
+      - AgentLogGroup
       - CatalogRepository
       - InventoryRepository
       - CartRepository
@@ -1003,6 +1041,7 @@ Resources:
       DeployVersion: !Ref DeployVersion
       BedrockModelId: !Ref BedrockModelId
       ExternalOtlpEndpoint: !Ref ExternalOtlpEndpoint
+      EnableTransactionSearch: !Ref EnableTransactionSearch
       Source: !If [UseS3Source, !Sub "s3://${SourceS3Bucket}/${SourceS3Key}", !Sub "${SourceRepoUrl}#${SourceBranch}"]
 
   # ---------------------------------------------------------------- Dashboard
@@ -1015,7 +1054,7 @@ Resources:
           {
             "widgets": [
               {"type": "text", "x": 0, "y": 0, "width": 24, "height": 2,
-               "properties": {"markdown": "## ⚡ VoltVerse - business & service health\nTraces: [X-Ray trace map](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map) · Logs: `${AppLog}` · Metrics namespace: `VoltVerse`"}},
+               "properties": {"markdown": "## ⚡ VoltVerse - business & service health\nTraces: [Transaction Search](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#transaction-search) · [Trace map](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map) · Sparky agent: [GenAI Observability](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#gen-ai-observability/agent-core) · Logs: `${AppLog}`, `${AgentLog}` · Metrics: `VoltVerse`, `bedrock-agentcore`"}},
               {"type": "metric", "x": 0, "y": 2, "width": 8, "height": 6,
                "properties": {"title": "Checkout attempts by outcome", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
                  "metrics": [
@@ -1033,25 +1072,25 @@ Resources:
                "properties": {"title": "Average server latency by service (s)", "region": "${AWS::Region}", "stat": "Average", "period": 60, "view": "timeSeries",
                  "metrics": [
                    ["VoltVerse", "http.server.request.duration", "service.name", "catalog"], ["...", "inventory"], ["...", "cart"],
-                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "assistant"]]}},
+                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "sparky"]]}},
               {"type": "metric", "x": 12, "y": 8, "width": 12, "height": 6,
                "properties": {"title": "Requests by service", "region": "${AWS::Region}", "stat": "SampleCount", "period": 60, "view": "timeSeries", "stacked": true,
                  "metrics": [
                    ["VoltVerse", "http.server.request.duration", "service.name", "catalog"], ["...", "inventory"], ["...", "cart"],
-                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "assistant"]]}},
+                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "sparky"]]}},
               {"type": "metric", "x": 0, "y": 14, "width": 8, "height": 6,
                "properties": {"title": "Sparky: chats by outcome", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
                  "metrics": [
-                   ["VoltVerse", "voltverse.assistant.chats", "service.name", "assistant", "outcome", "success"], ["...", "error"]]}},
+                   ["VoltVerse", "voltverse.assistant.chats", "service.name", "sparky", "outcome", "success"], ["...", "error"]]}},
               {"type": "metric", "x": 8, "y": 14, "width": 8, "height": 6,
                "properties": {"title": "Sparky: end-to-end latency (s)", "region": "${AWS::Region}", "period": 60, "view": "timeSeries",
                  "metrics": [
-                   ["VoltVerse", "voltverse.assistant.latency", "service.name", "assistant", {"stat": "Average"}],
+                   ["VoltVerse", "voltverse.assistant.latency", "service.name", "sparky", {"stat": "Average"}],
                    ["...", {"stat": "Maximum"}]]}},
               {"type": "metric", "x": 16, "y": 14, "width": 8, "height": 6,
                "properties": {"title": "Sparky: tool calls", "region": "${AWS::Region}", "stat": "Sum", "period": 300, "view": "bar",
                  "metrics": [
-                   ["VoltVerse", "voltverse.assistant.tool_calls", "service.name", "assistant", "tool", "search_products"],
+                   ["VoltVerse", "voltverse.assistant.tool_calls", "service.name", "sparky", "tool", "search_products"],
                    ["...", "get_product_details"], ["...", "check_stock"], ["...", "add_to_cart"], ["...", "view_cart"],
                    ["...", "get_order_status"], ["...", "cancel_order"], ["...", "get_store_policies"]]}},
               {"type": "log", "x": 0, "y": 20, "width": 24, "height": 6,
@@ -1060,6 +1099,7 @@ Resources:
             ]
           }
         - AppLog: !Ref AppLogGroup
+          AgentLog: !Ref AgentLogGroup
 
 Outputs:
   StorefrontUrl:
@@ -1075,6 +1115,11 @@ Outputs:
     Value: !Ref DeployerProject
   DashboardUrl:
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards/dashboard/${EnvironmentName}-store
+  GenAIObservabilityUrl:
+    Description: Sparky in CloudWatch GenAI Observability (Bedrock AgentCore agents view)
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#gen-ai-observability/agent-core
+  AgentLogGroup:
+    Value: !Ref AgentLogGroup
   TraceMapUrl:
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map
   ApplicationLogGroup:
