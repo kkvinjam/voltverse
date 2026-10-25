@@ -1,2 +1,4 @@
 # Strands Agents SDK (uses Amazon Bedrock via the Converse API and emits OpenTelemetry spans natively)
 strands-agents==1.62.0
+# Sparky bundles the ADOT SDK (not injected): AgentCore GenAI observability requires the SDK to export directly.
+-r ../common/requirements-otel-sdk.txt

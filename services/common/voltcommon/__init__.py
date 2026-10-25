@@ -1,8 +1,9 @@
 """Shared helpers for VoltVerse microservices.
 
-Telemetry is provided by OpenTelemetry auto-instrumentation (`opentelemetry-instrument`)
-which is configured entirely through standard OTEL_* environment variables. This package
-only adds business metrics, structured logging and a few conveniences on top.
+Telemetry is provided by ADOT Python auto-instrumentation, configured entirely through standard
+OTEL_* environment variables. On EKS it is injected by the Amazon CloudWatch Observability add-on
+(CloudWatch Application Signals); elsewhere it runs under `opentelemetry-instrument`. This package
+only uses the OpenTelemetry API to add business metrics, structured logging and a few conveniences.
 """
 
 from .app import create_app, ServiceError

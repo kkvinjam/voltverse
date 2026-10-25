@@ -2,11 +2,13 @@
 # (Finch users: finch compose -f local/docker-compose.yml up --build)
 # Only the storefront is published, and only on 127.0.0.1:8080. Everything else stays on the compose network.
 # Sparky needs AWS credentials with Bedrock access: they are read from ~/.aws (AWS_PROFILE selects a profile).
+# There is no CloudWatch Observability add-on locally, so every image bundles the ADOT SDK (BUNDLE_OTEL_SDK).
 
 x-service: &service
   build:
     context: ../services
     dockerfile: python.Dockerfile
+    args: { BUNDLE_OTEL_SDK: "true" }
   restart: unless-stopped
   depends_on:
     bootstrap: { condition: service_completed_successfully }
@@ -58,49 +60,49 @@ services:
 
   catalog:
     <<: *service
-    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: catalog } }
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: catalog, BUNDLE_OTEL_SDK: "true" } }
     environment:
       <<: *env
       OTEL_SERVICE_NAME: catalog
 
   inventory:
     <<: *service
-    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: inventory } }
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: inventory, BUNDLE_OTEL_SDK: "true" } }
     environment:
       <<: *env
       OTEL_SERVICE_NAME: inventory
 
   cart:
     <<: *service
-    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: cart } }
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: cart, BUNDLE_OTEL_SDK: "true" } }
     environment:
       <<: *env
       OTEL_SERVICE_NAME: cart
 
   checkout:
     <<: *service
-    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: checkout } }
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: checkout, BUNDLE_OTEL_SDK: "true" } }
     environment:
       <<: *env
       OTEL_SERVICE_NAME: checkout
 
   payment:
     <<: *service
-    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: payment } }
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: payment, BUNDLE_OTEL_SDK: "true" } }
     environment:
       <<: *env
       OTEL_SERVICE_NAME: payment
 
   orders:
     <<: *service
-    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: orders } }
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: orders, BUNDLE_OTEL_SDK: "true" } }
     environment:
       <<: *env
       OTEL_SERVICE_NAME: orders
 
   assistant:
     <<: *service
-    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: assistant } }
+    build: { context: ../services, dockerfile: python.Dockerfile, args: { SERVICE: assistant, BUNDLE_OTEL_SDK: "true" } }
     environment:
       <<: *env
       OTEL_SERVICE_NAME: sparky

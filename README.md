@@ -1,6 +1,6 @@
 # ⚡ VoltVerse — *Electronics, energized.*
 
-VoltVerse is a sleek, fully working electronics store built as a **microservices application on Amazon EKS**. It includes **Sparky**, an AI shopping and support assistant built with **Strands Agents** on **Amazon Bedrock**, and every component is instrumented with **OpenTelemetry**.
+VoltVerse is a sleek, fully working electronics store built as a **microservices application on Amazon EKS**. It includes **Sparky**, an AI shopping and support assistant built with **Strands Agents** on **Amazon Bedrock**. Every component is instrumented with **OpenTelemetry**, and the microservices show up in **CloudWatch Application Signals** the same way they do in the [One Observability Demo](https://aws-samples.github.io/one-observability-demo/).
 
 It is packaged as **one CloudFormation template**, so you can launch identical copies in many AWS accounts for workshops, demos, and observability training.
 
@@ -20,8 +20,10 @@ More diagrams (component overview, checkout and agent sequences, deployment flow
 | **payment** | Python / FastAPI | Simulated card processor with test cards and fault injection. Stores only the card brand and last 4 digits. |
 | **orders** | Python / FastAPI | Orders, simulated shipment tracking, cancellations (refund + restock), returns |
 | **assistant** | Python / **Strands Agents** + Bedrock | **Sparky**: 13 tools, streaming replies (SSE), bounded agent loop |
-| **loadgen** | Python | Synthetic shoppers, so dashboards and traces always have data (never calls Bedrock) |
-| **otel-collector** | AWS Distro for OpenTelemetry | Receives OTLP from the microservices. Forwards traces and logs to the CloudWatch OTLP endpoints (SigV4), metrics to CloudWatch as EMF, and optionally to an external OTLP endpoint. |
+| **loadgen** | Python | Continuous synthetic shoppers (page loads, browsing, search, carts, checkouts, cancellations), so dashboards and traces always have data. Never calls Bedrock. |
+| **sparky-traffic** | Python | Continuous multi-turn conversations with Sparky through the storefront gateway, so GenAI Observability always has sessions. Calls Bedrock. |
+| **CloudWatch Observability add-on** | CloudWatch agent, Fluent Bit, operator | Injects the ADOT Python SDK into annotated pods (**Application Signals**), plus **Container Insights** with enhanced observability and container logs |
+| **otel-collector** | AWS Distro for OpenTelemetry | Receives the business metrics and OTLP logs. Forwards logs to the CloudWatch OTLP logs endpoint (SigV4), metrics to CloudWatch as EMF, and optionally to an external OTLP endpoint. |
 
 ### Sparky's tools
 
@@ -79,12 +81,15 @@ scripts/launch-stack.sh --s3-bucket my-artifacts-bucket --s3-key voltverse-sourc
 
 1. CloudFormation creates:
    - a VPC (2 AZs, single NAT), an EKS Auto Mode cluster, 5 DynamoDB tables, and 8 ECR repositories
+   - the **Amazon CloudWatch Observability** EKS add-on (CloudWatch agent with its own Pod Identity role) and the Container Insights log groups
    - least-privilege Pod Identity roles, an internal ALB, a WAF web ACL, a CloudFront distribution with a VPC origin, and a CloudWatch dashboard
 2. A custom resource starts the **CodeBuild deployer**, which runs inside the VPC. The deployer:
    - clones the source
+   - enables CloudWatch Application Signals and Transaction Search in the account and region, if they're off
    - builds and pushes 8 images
    - seeds DynamoDB
-   - renders and applies `k8s/*.yaml`
+   - waits for the add-on's auto-instrumentation webhook, then renders and applies `k8s/*.yaml` (including the two traffic generators)
+   - checks that every annotated pod got the ADOT SDK injected
    - waits until the storefront is healthy behind the ALB
 3. The build reports success or failure back to CloudFormation. If the deployment fails, the stack fails too, and the reason points at the CodeBuild build to inspect.
 
@@ -97,8 +102,10 @@ scripts/launch-stack.sh --s3-bucket my-artifacts-bucket --s3-key voltverse-sourc
 | `SourceS3Bucket` / `SourceS3Key` | empty / `voltverse-source.zip` | S3 source. Overrides Git when set. |
 | `BedrockModelId` | `global.anthropic.claude-opus-5-5` | Model or inference profile used by Sparky |
 | `AssistantRequestsPer5Min` | `1000` | WAF cap on **total** assistant requests (Bedrock cost guard) |
+| `ShopperTrafficPerMinute` | `12` | Synthetic shoppers per minute (`loadgen` pod). `0` disables it. |
+| `AgentTrafficTurnsPerMinute` | `2` | Chat turns per minute sent to Sparky, continuously (`sparky-traffic` pod). **Every turn calls Bedrock.** `0` disables it. Max `10`. |
 | `EnableTransactionSearch` | `true` | Enable CloudWatch Transaction Search in the account/region if it's off. Required for traces and the AgentCore view. |
-| `ExternalOtlpEndpoint` | empty | Also send the microservices' telemetry (and Sparky's metrics) to this OTLP/HTTP endpoint |
+| `ExternalOtlpEndpoint` | empty | Also send the microservices' business metrics and logs (and Sparky's metrics) to this OTLP/HTTP endpoint. Traces go to the CloudWatch agent. |
 | `ParticipantRoleArn` | empty | IAM role granted EKS cluster-admin (for example a workshop participant role) |
 | `EnablePublicClusterEndpoint` / `PublicEndpointCidrs` | `false` / empty | Expose the IAM-authenticated EKS API so `kubectl` works from laptops or CloudShell. Restrict it with CIDRs. |
 | `AllowedViewerCidrs` | empty | Restrict the **store** to these CIDRs (WAF). Empty means public. |
@@ -107,7 +114,7 @@ scripts/launch-stack.sh --s3-bucket my-artifacts-bucket --s3-key voltverse-sourc
 
 ### Outputs
 
-`StorefrontUrl`, `DashboardUrl`, `GenAIObservabilityUrl`, `TraceMapUrl`, `ApplicationLogGroup`, `AgentLogGroup`, `ClusterName`, `KubeconfigCommand`, `DeployerProject`.
+`StorefrontUrl`, `DashboardUrl`, `ApplicationSignalsUrl`, `ContainerInsightsUrl`, `GenAIObservabilityUrl`, `TraceMapUrl`, `ApplicationLogGroup`, `ContainerLogGroup`, `AgentLogGroup`, `ClusterName`, `KubeconfigCommand`, `DeployerProject`.
 
 ---
 
@@ -139,7 +146,7 @@ aws cloudformation create-stack-instances --stack-set-name voltverse \
 
 Notes for workshop operators:
 - **Bedrock access is per account.** Submit the Anthropic use-case form in each account, or use the account vending process your event platform provides, before the event.
-- **Cost (estimate, verify with the AWS Pricing Calculator):** roughly **US$0.45–0.70 per account per hour** while running. That covers EKS, Auto Mode nodes, NAT, ALB, WAF, and CloudWatch. Bedrock is extra and depends on usage. Delete stacks after the event.
+- **Cost (estimate, verify with the AWS Pricing Calculator):** roughly **US$0.45–0.70 per account per hour** while running. That covers EKS, Auto Mode nodes, NAT, ALB, WAF, and CloudWatch. Bedrock is extra and depends on usage: the `sparky-traffic` pod calls it around the clock (`AgentTrafficTurnsPerMinute`, default 2 turns/minute). Delete stacks after the event.
 - **Default quotas:** each account needs 1 EIP, 1 NAT gateway, 1 VPC, and 1 CloudFront distribution.
 
 ---
@@ -166,22 +173,31 @@ Notes for workshop operators:
 
 ## Observability
 
-Everything uses **OpenTelemetry**, and all logs, metrics, and traces land in **Amazon CloudWatch**.
-- Every Python service runs the **AWS Distro for OpenTelemetry (ADOT) Python SDK** under `opentelemetry-instrument`, configured purely through `OTEL_*` environment variables.
-- The microservices export OTLP to the in-cluster ADOT Collector, which forwards to the **CloudWatch OTLP endpoints** (`xray.<region>.amazonaws.com/v1/traces`, `logs.<region>.amazonaws.com/v1/logs`) and writes metrics as EMF.
-- **Sparky** is configured as a GenAI agent for **CloudWatch GenAI Observability → Bedrock AgentCore**. AgentCore doesn't support agents that export through a collector, so the ADOT SDK (`AGENT_OBSERVABILITY_ENABLED=true`) sends Sparky's spans and logs directly to CloudWatch. It uses the agent log group `/aws/bedrock-agentcore/runtimes/<env>-sparky` and propagates `session.id`. Sparky's metrics go through the collector, like every other service's.
+Everything uses **OpenTelemetry**, and all logs, metrics, and traces land in **Amazon CloudWatch**. The setup follows the [One Observability Demo](https://github.com/aws-samples/one-observability-demo):
+- The stack installs the **Amazon CloudWatch Observability EKS add-on**. It runs the CloudWatch agent (Pod Identity role with `CloudWatchAgentServerPolicy`) and Fluent Bit, and turns on **Container Insights** with enhanced observability.
+- Each microservice pod (and `loadgen`) has the annotation `instrumentation.opentelemetry.io/inject-python: "true"`. The add-on's operator injects the **ADOT Python SDK** at pod start. The images contain only the OpenTelemetry API. The services then show up in **CloudWatch Application Signals** (`eks:<cluster>/voltverse`) with a service map, latency, fault and error metrics per operation, SLOs, and traces.
+- The injected SDK sends traces and Application Signals metrics to the CloudWatch agent. The `voltverse-otel` ConfigMap also sends the business metrics (`voltverse.*`) and OTLP logs to the in-cluster ADOT Collector. The collector writes metrics as EMF and logs to the **CloudWatch OTLP logs endpoint**.
+- **Sparky** is configured as a GenAI agent for **CloudWatch GenAI Observability → Bedrock AgentCore**. AgentCore doesn't support agents that export through a collector, so Sparky bundles the ADOT SDK (`AGENT_OBSERVABILITY_ENABLED=true`), opts out of injection, and sends its spans and logs directly to CloudWatch. It uses the agent log group `/aws/bedrock-agentcore/runtimes/<env>-sparky` and propagates `session.id`. Sparky's metrics go through the collector.
 - Strands emits GenAI semantic-convention spans for agent invocations, event-loop cycles, model calls, and tool calls.
-- **CloudWatch Transaction Search** must be on for the OTLP traces endpoint and the AgentCore view. The deployer enables it if it's off (`EnableTransactionSearch`, default `true`). It's an account-level setting and is left on when the stack is deleted.
+- **Application Signals** and **CloudWatch Transaction Search** are account- and region-level settings. The deployer turns them on if they're off (`EnableTransactionSearch`, default `true`). They stay on when the stack is deleted.
 
 | Signal | Where |
 |---|---|
+| Services | **CloudWatch → Application Signals** (`ApplicationSignalsUrl`): service map, per-operation latency, faults, and errors, dependencies (DynamoDB, downstream services), SLOs |
+| Cluster | **CloudWatch → Container Insights** (`ContainerInsightsUrl`): cluster, node, pod, and container metrics. Container stdout is in `ContainerLogGroup`. |
 | Traces | **CloudWatch → Transaction Search** (spans in `aws/spans`; query any span attribute, e.g. `voltverse.order.id`, `session.id`) and the trace map (`TraceMapUrl`) |
 | AI agent | **CloudWatch → GenAI Observability → Bedrock AgentCore** (`GenAIObservabilityUrl`): Sparky's sessions, traces, model and tool spans, token usage, latency, and errors. Logs are in `AgentLogGroup`. | Searchable annotations: `voltverse.order.id`, `voltverse.checkout.outcome`, `voltverse.payment.status`, `session.id`. |
-| Metrics | CloudWatch namespace **`VoltVerse`** and the `DashboardUrl` dashboard: HTTP latency per service, checkout outcomes, revenue, payment outcomes, agent latency, tool usage, and `gen_ai.*` token usage |
+| Metrics | CloudWatch namespaces **`ApplicationSignals`** and **`VoltVerse`**, and the `DashboardUrl` dashboard: latency, requests and faults per service, checkout outcomes, revenue, payment outcomes, agent latency, tool usage, and `gen_ai.*` token usage |
 | Logs | `ApplicationLogGroup` (microservices, via the OTLP logs endpoint) and `AgentLogGroup` (Sparky). Every record carries the trace and span ids for log↔trace correlation. |
 | Anything else | Set `ExternalOtlpEndpoint`, or edit `k8s/10-otel-collector.yaml` |
 
-**Sparky traffic:** `scripts/sparky-traffic.py <StorefrontUrl> --minutes 15 --rate 8` runs realistic multi-turn conversations: recommendations, comparisons, cart changes, quotes, order tracking, cancellations, payments, policies, and off-topic requests. It creates real orders for the order scenarios first. Every turn calls Bedrock, so mind the cost. The gateway allows about 12 assistant requests per minute per IP.
+**Traffic generators:** two pods run continuously:
+- `loadgen`: shoppers (`ShopperTrafficPerMinute`)
+- `sparky-traffic`: Sparky conversations (`AgentTrafficTurnsPerMinute`)
+
+Change the parameters and update the stack, or scale a pod directly: `kubectl -n voltverse scale deploy/sparky-traffic --replicas=0`.
+
+**Extra Sparky traffic:** `scripts/sparky-traffic.py <StorefrontUrl> --minutes 15 --rate 8` (the same script the pod runs) runs realistic multi-turn conversations: recommendations, comparisons, cart changes, quotes, order tracking, cancellations, payments, policies, and off-topic requests. It creates real orders for the order scenarios first. Every turn calls Bedrock, so mind the cost. The gateway allows about 12 assistant requests per minute per IP.
 
 **Fault injection** for exercises is in the `voltverse-chaos` ConfigMap:
 
@@ -229,7 +245,7 @@ cd services/storefront && npm install && npm run dev
 - **EKS API endpoint:** private by default. The deployer runs inside the VPC.
 - **Pods:**
   - Each workload has its own least-privilege IAM role through EKS Pod Identity.
-  - Pods run as non-root with read-only root filesystems, all capabilities dropped, and the `restricted` Pod Security Standard.
+  - Pods run as non-root with read-only root filesystems and all capabilities dropped (the `restricted` Pod Security Standard controls). The `voltverse` namespace enforces `baseline` and warns/audits on `restricted`, because the add-on's injected init container has no container `securityContext`.
 - **Data at rest:** DynamoDB tables are encrypted. ECR images are scanned on push. The payment service never stores card numbers or CVCs.
 - **No authentication:** this is a demo store with no customer accounts. Don't put real personal or payment data in it.
 
@@ -240,6 +256,7 @@ cd services/storefront && npm install && npm run dev
 | Stack fails at `Deployment` | Open the CodeBuild project `<env>-deployer` and read the latest build log. Common causes: a wrong `SourceRepoUrl` or branch, or a private repo (use the S3 source instead). |
 | Sparky says it's "taking a short break" | Bedrock access isn't enabled, or the model ID isn't available in the region. Check the `assistant` logs in `ApplicationLogGroup` (search for `agent invocation failed`). |
 | HTTP 429 from the store | nginx per-viewer rate limits (`services/storefront/nginx.conf`) or the WAF assistant cap |
+| A service is missing from Application Signals | Check that its pods have the `opentelemetry-auto-instrumentation-python` init container: `kubectl -n voltverse get pod -l app=catalog -o jsonpath='{.items[0].spec.initContainers[*].name}'`. If they don't, check the `amazon-cloudwatch-observability` add-on's health in the EKS console, then run `kubectl -n voltverse rollout restart deploy`. New services appear a few minutes after their first requests. |
 | `kubectl` times out | The EKS endpoint is private by default. Set `EnablePublicClusterEndpoint=true` (plus `PublicEndpointCidrs`), or use a CloudShell VPC environment in the stack's VPC. |
 
 ## Repository layout
@@ -249,11 +266,12 @@ cloudformation/voltverse.yaml   # the one template to launch everything
 k8s/                            # Kubernetes manifests (rendered by scripts/render.py at deploy time)
 services/
   common/                       # shared FastAPI app factory, logging, DynamoDB + HTTP helpers, requirements
-  python.Dockerfile             # one image definition for all Python services
+  python.Dockerfile             # one image definition for all Python services (ADOT SDK injected on EKS)
   catalog/ inventory/ cart/ checkout/ payment/ orders/ assistant/
   storefront/                   # React app, nginx gateway config, Dockerfile
-  loadgen/                      # synthetic traffic script
-scripts/                        # deploy/destroy (CodeBuild), seeding, rendering, packaging, launch helpers
+  loadgen/                      # synthetic shopper traffic (loadgen pod)
+scripts/                        # deploy/destroy (CodeBuild), seeding, rendering, packaging, launch helpers,
+                                #   sparky-traffic.py (AI assistant traffic, sparky-traffic pod)
 data/products.json              # catalog seed data
 local/                          # docker-compose stack for local development
 tests/                          # end-to-end integration tests

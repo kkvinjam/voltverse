@@ -16,9 +16,13 @@ flowchart LR
       cat[catalog]; inv[inventory]; cart[cart]; chk[checkout]; pay[payment]; ord[orders]
       sparky[[Sparky assistant<br/>Strands Agents]]
       lg[loadgen]
+      st[sparky-traffic]
     end
     subgraph obs[namespace observability]
       col[ADOT Collector]
+    end
+    subgraph acw[namespace amazon-cloudwatch]
+      cwa[CloudWatch agent + Fluent Bit<br/>CloudWatch Observability add-on]
     end
   end
   alb -->|TargetGroupBinding| sf
@@ -30,8 +34,11 @@ flowchart LR
   sparky -->|Converse| bedrock[(Amazon Bedrock<br/>Claude)]
   cat & inv & cart & ord & pay --> ddb[(Amazon DynamoDB)]
   lg --> sf
-  ns -. OTLP .-> col
-  col -. SigV4 OTLP traces + logs, EMF metrics .-> cw[(Amazon CloudWatch)]
+  st -->|chat| sf
+  ns -. injected ADOT SDK: traces + Application Signals metrics .-> cwa
+  ns -. OTLP business metrics + logs .-> col
+  cwa -. Application Signals, X-Ray, Container Insights, container logs .-> cw[(Amazon CloudWatch)]
+  col -. SigV4 OTLP logs, EMF metrics .-> cw
   sparky -. ADOT SDK direct: traces + logs .-> cw
 ```
 
@@ -177,13 +184,21 @@ Cancelling an order (`orders`) releases the reservation in `inventory` and refun
 ## Telemetry pipeline (everything lands in Amazon CloudWatch)
 
 ```
-microservice pods (ADOT Python SDK under opentelemetry-instrument: FastAPI, httpx, botocore, logging)
-   │ OTLP/HTTP  http://otel-collector.observability:4318
-   ▼
+Amazon CloudWatch Observability EKS add-on (namespace amazon-cloudwatch, CloudWatch agent with Pod Identity)
+   ├─ operator webhook: pods annotated instrumentation.opentelemetry.io/inject-python: "true" get an init container
+   │  that copies the ADOT Python SDK into the pod; PYTHONPATH + OTEL_* env vars start it (no SDK in the image)
+   ├─ CloudWatch agent DaemonSet: Container Insights (enhanced observability) + Application Signals receiver
+   └─ Fluent Bit DaemonSet: container stdout/stderr → /aws/containerinsights/<cluster>/application
+
+microservice + loadgen pods (injected ADOT SDK: FastAPI, httpx, botocore, logging, Python runtime metrics)
+   ├─ traces + Application Signals metrics → cloudwatch-agent.amazon-cloudwatch:4316
+   │     → X-Ray / aws/spans (Transaction Search), ApplicationSignals namespace, service map, SLOs
+   └─ business metrics (voltverse.*) + OTLP logs → http://otel-collector.observability:4318   (voltverse-otel ConfigMap)
+
 ADOT collector ─ memory_limiter → resource(cloud.*, k8s.cluster.name) → batch
-   ├─ traces  → otlphttp + sigv4auth → https://xray.<region>.amazonaws.com/v1/traces → aws/spans (Transaction Search)
    ├─ logs    → otlphttp + sigv4auth → https://logs.<region>.amazonaws.com/v1/logs   → ApplicationLogGroup
    ├─ metrics → awsemf (namespace VoltVerse; dimension sets allow-listed to control cardinality)
+   ├─ traces  → otlphttp + sigv4auth → https://xray.<region>.amazonaws.com/v1/traces (for OTLP senders other than the agent)
    └─ (optional) otlphttp/external → ExternalOtlpEndpoint
 
 Sparky pod (ADOT SDK, AGENT_OBSERVABILITY_ENABLED=true, Strands GenAI spans, session.id baggage)
@@ -197,7 +212,9 @@ Why Sparky bypasses the collector: AgentCore observability for agents hosted out
 
 CloudWatch Transaction Search must be enabled in the account and region, because the OTLP traces endpoint stores spans in `aws/spans`. The deployer enables it when it's off (resource policy for X-Ray on `aws/spans`, then `UpdateTraceSegmentDestination=CloudWatchLogs`).
 
-All configuration uses `OTEL_*` variables: `voltverse-config` in `k8s/20-config.yaml`, and Sparky's overrides in `k8s/30-services.yaml`. Application code is unchanged.
+All configuration uses `OTEL_*` variables: `voltverse-otel` (injected services) and `sparky-otel` in `k8s/20-config.yaml`, and Sparky's overrides in `k8s/30-services.yaml`. The operator never overrides a variable that is already set, so `voltverse-otel` only adds what Application Signals doesn't cover. It sets `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true` explicitly: without it, the operator skips injection when any OTLP endpoint points somewhere other than the CloudWatch agent. Application code only uses the OpenTelemetry API.
+
+The injected init container has no container `securityContext`, so the `voltverse` namespace enforces the `baseline` Pod Security Standard and warns/audits on `restricted`. Every VoltVerse container still sets the restricted controls itself.
 
 ## IAM (EKS Pod Identity)
 
@@ -210,7 +227,8 @@ All configuration uses `OTEL_*` variables: `voltverse-config` in `k8s/20-config.
 | payment | `GetItem/PutItem/UpdateItem/Query` on payments (+ GSI) |
 | assistant (Sparky) | `bedrock:InvokeModel*`; `AWSXrayWriteOnlyAccess`; CloudWatch Logs writes to the agent log group |
 | otel-collector | `AWSXrayWriteOnlyAccess`; CloudWatch Logs writes to the VoltVerse application and metrics log groups |
-| checkout, storefront, loadgen | none (no AWS API calls) |
+| cloudwatch-agent (add-on) | `CloudWatchAgentServerPolicy`, `AWSXrayWriteOnlyAccess` |
+| checkout, storefront, loadgen, sparky-traffic | none (no AWS API calls) |
 
 ## Deployment mechanics
 
@@ -220,9 +238,11 @@ All configuration uses `OTEL_*` variables: `voltverse-config` in `k8s/20-config.
 2. Run `scripts/codebuild-deploy.sh`:
    - install a kubectl version that matches the cluster
    - build and push images (tag `b<build number>`)
+   - enable Application Signals (`StartDiscovery`) and Transaction Search
    - seed DynamoDB
-   - run `scripts/render.py k8s/*.yaml | kubectl apply -f -`
-   - wait for rollouts and for healthy ALB targets
+   - wait for the CloudWatch Observability add-on's webhook
+   - create the traffic-script ConfigMaps from their files, then run `scripts/render.py k8s/*.yaml | kubectl apply -f -`
+   - wait for rollouts, check that every annotated pod got the ADOT init container (restart once if not), and wait for healthy ALB targets
 3. PUT the result to the CloudFormation pre-signed response URL.
 
 On stack deletion the same path runs `scripts/codebuild-destroy.sh`, which always reports success, so a broken cluster never blocks teardown.

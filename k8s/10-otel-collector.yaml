@@ -1,9 +1,12 @@
-# OpenTelemetry Collector (AWS Distro for OpenTelemetry).
-# Every microservice sends OTLP traces, metrics and logs here; the collector forwards to Amazon CloudWatch:
-#   traces  -> CloudWatch OTLP traces endpoint (xray.<region>.amazonaws.com/v1/traces, SigV4)
-#              -> spans stored in the aws/spans log group (CloudWatch Transaction Search)
-#   logs    -> CloudWatch OTLP logs endpoint (logs.<region>.amazonaws.com/v1/logs, SigV4)
-#   metrics -> CloudWatch Metrics via Embedded Metric Format (awsemf, namespace "VoltVerse")
+# OpenTelemetry Collector (AWS Distro for OpenTelemetry), next to the CloudWatch agent installed by the
+# Amazon CloudWatch Observability add-on (namespace amazon-cloudwatch).
+#   CloudWatch agent  <- traces + Application Signals metrics from the injected ADOT SDK (all microservices)
+#                     -> X-Ray / Transaction Search, Application Signals, Container Insights (+ container logs)
+#   this collector    <- business metrics (voltverse.*) and OTLP logs from the microservices, metrics from Sparky
+#     metrics -> CloudWatch Metrics via Embedded Metric Format (awsemf, namespace "VoltVerse")
+#     logs    -> CloudWatch OTLP logs endpoint (logs.<region>.amazonaws.com/v1/logs, SigV4)
+#     traces  -> CloudWatch OTLP traces endpoint (xray.<region>.amazonaws.com/v1/traces, SigV4), for any
+#                workload that sends OTLP traces here instead of to the CloudWatch agent
 # and optionally to any external OTLP endpoint (set ExternalOtlpEndpoint on the stack).
 # The Sparky agent exports traces/logs directly with the ADOT SDK (required by AgentCore observability)
 # and only sends its metrics here.

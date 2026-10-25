@@ -1,0 +1,4 @@
+# AWS Distro for OpenTelemetry (ADOT) Python SDK, bundled into the image instead of injected.
+# Used by Sparky (Bedrock AgentCore observability needs the SDK in the image) and by local builds
+# (BUNDLE_OTEL_SDK=true in local/docker-compose.yml). Started with `opentelemetry-instrument` (see start.sh).
+aws-opentelemetry-distro==0.21.0

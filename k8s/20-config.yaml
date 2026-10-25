@@ -13,13 +13,45 @@ data:
   PAYMENTS_TABLE: "${PAYMENTS_TABLE}"
   BEDROCK_MODEL_ID: "${BEDROCK_MODEL_ID}"
   HOME: /tmp
-  # --- OpenTelemetry (standard OTEL_* variables, read by opentelemetry-instrument + the ADOT SDK) ---
-  # Microservices send OTLP to the in-cluster collector, which forwards to the CloudWatch OTLP endpoints.
-  # The Sparky agent overrides traces/logs to go straight to CloudWatch (see k8s/30-services.yaml).
+---
+# OpenTelemetry settings for the microservices instrumented by CloudWatch Application Signals.
+# Pods annotated with instrumentation.opentelemetry.io/inject-python get the ADOT Python SDK injected by the
+# Amazon CloudWatch Observability add-on, which also sets the Application Signals variables: traces and
+# Application Signals metrics go to the CloudWatch agent (cloudwatch-agent.amazon-cloudwatch:4316).
+# The operator never overrides a variable set here, so these only add what Application Signals doesn't cover:
+# business metrics (voltverse.*) and OTLP logs go to the in-cluster ADOT collector (EMF + CloudWatch Logs).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voltverse-otel
+  namespace: voltverse
+data:
+  # Explicitly on: the operator then injects even though metrics/logs use a non-CloudWatch-agent endpoint.
+  OTEL_AWS_APPLICATION_SIGNALS_ENABLED: "true"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://otel-collector.observability:4318/v1/metrics"
+  OTEL_LOGS_EXPORTER: "otlp"
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "http://otel-collector.observability:4318/v1/logs"
+  OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/protobuf"
+  OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+  OTEL_PROPAGATORS: "tracecontext,baggage,xray"
+  # Keep every trace (spans land in aws/spans through Transaction Search) instead of X-Ray's 1 req/s + 5% default.
+  OTEL_TRACES_SAMPLER: "parentbased_always_on"
+  OTEL_METRIC_EXPORT_INTERVAL: "30000"
+  OTEL_PYTHON_EXCLUDED_URLS: "health,ready"
+  OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: "urllib,urllib3"
+---
+# OpenTelemetry settings for Sparky, which bundles the ADOT SDK (Bedrock AgentCore GenAI observability needs
+# the SDK to export directly). Not injected and not an Application Signals service. See k8s/30-services.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sparky-otel
+  namespace: voltverse
+data:
   OTEL_PYTHON_DISTRO: "aws_distro"
   OTEL_PYTHON_CONFIGURATOR: "aws_configurator"
   OTEL_AWS_APPLICATION_SIGNALS_ENABLED: "false"
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
   OTEL_TRACES_EXPORTER: "otlp"
   OTEL_METRICS_EXPORTER: "otlp"

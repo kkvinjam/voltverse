@@ -1,9 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   VoltVerse - "Electronics, energized." A microservices e-commerce store on Amazon EKS Auto Mode with a
-  Strands Agents AI assistant (Amazon Bedrock) and OpenTelemetry instrumentation (X-Ray, CloudWatch).
+  Strands Agents AI assistant (Amazon Bedrock) and OpenTelemetry instrumentation: CloudWatch Application Signals
+  and Container Insights (Amazon CloudWatch Observability add-on), X-Ray / Transaction Search, GenAI Observability.
   Creates a VPC, EKS cluster, DynamoDB tables, ECR repositories, an internal ALB behind CloudFront
-  (VPC origin) and a CodeBuild project that builds and deploys the application.
+  (VPC origin) and a CodeBuild project that builds and deploys the application and its traffic generators.
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -12,6 +13,8 @@ Metadata:
         Parameters: [SourceRepoUrl, SourceBranch, SourceS3Bucket, SourceS3Key]
       - Label: { default: "AI assistant" }
         Parameters: [BedrockModelId, AssistantRequestsPer5Min]
+      - Label: { default: "Traffic generators" }
+        Parameters: [ShopperTrafficPerMinute, AgentTrafficTurnsPerMinute]
       - Label: { default: "Observability" }
         Parameters: [EnableTransactionSearch, ExternalOtlpEndpoint, LogRetentionDays]
       - Label: { default: "Access" }
@@ -52,6 +55,20 @@ Parameters:
     Default: 1000
     MinValue: 10
     Description: WAF cap on total AI-assistant requests per 5 minutes across all visitors (Bedrock cost guard).
+  ShopperTrafficPerMinute:
+    Type: Number
+    Default: 12
+    MinValue: 0
+    MaxValue: 600
+    Description: Synthetic shoppers per minute browsing, searching, carting and checking out (loadgen pod). 0 disables it.
+  AgentTrafficTurnsPerMinute:
+    Type: Number
+    Default: 2
+    MinValue: 0
+    MaxValue: 10
+    Description: >-
+      Chat turns per minute that the sparky-traffic pod sends to the AI assistant, continuously. Every turn calls
+      Amazon Bedrock and costs money. 0 disables it. Max 10 (the gateway allows 12 assistant requests/minute per client).
   EnableTransactionSearch:
     Type: String
     Default: "true"
@@ -634,6 +651,81 @@ Resources:
     Type: AWS::EKS::PodIdentityAssociation
     Properties: { ClusterName: !Ref Cluster, Namespace: observability, ServiceAccount: otel-collector, RoleArn: !GetAtt CollectorRole.Arn }
 
+  # ---------------------------------------------------------------- Amazon CloudWatch Observability add-on
+  # CloudWatch agent + Fluent Bit (Container Insights with enhanced observability, container logs) and the
+  # operator that injects the ADOT SDK into pods annotated instrumentation.opentelemetry.io/inject-python
+  # (CloudWatch Application Signals). Same setup as the One Observability Demo.
+  CloudWatchAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/CloudWatchAgentServerPolicy
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSXrayWriteOnlyAccess
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pods.eks.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+
+  # Created here (instead of by the agent) so they get a retention period and are deleted with the stack.
+  ContainerInsightsApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/containerinsights/${EnvironmentName}-eks/application
+      RetentionInDays: !Ref LogRetentionDays
+  ContainerInsightsDataplaneLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/containerinsights/${EnvironmentName}-eks/dataplane
+      RetentionInDays: !Ref LogRetentionDays
+  ContainerInsightsHostLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/containerinsights/${EnvironmentName}-eks/host
+      RetentionInDays: !Ref LogRetentionDays
+  ContainerInsightsPerformanceLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/containerinsights/${EnvironmentName}-eks/performance
+      RetentionInDays: !Ref LogRetentionDays
+
+  CloudWatchObservabilityAddon:
+    Type: AWS::EKS::Addon
+    DependsOn:
+      - ContainerInsightsApplicationLogGroup
+      - ContainerInsightsDataplaneLogGroup
+      - ContainerInsightsHostLogGroup
+      - ContainerInsightsPerformanceLogGroup
+    Properties:
+      ClusterName: !Ref Cluster
+      AddonName: amazon-cloudwatch-observability
+      ResolveConflicts: OVERWRITE
+      PodIdentityAssociations:
+        - ServiceAccount: cloudwatch-agent
+          RoleArn: !GetAtt CloudWatchAgentRole.Arn
+      # Replaces (does not merge with) the add-on's default agent configuration.
+      ConfigurationValues: !Sub |
+        {
+          "agent": {
+            "config": {
+              "logs": {
+                "metrics_collected": {
+                  "application_signals": { "hosted_in": "${Cluster}" },
+                  "kubernetes": { "cluster_name": "${Cluster}", "enhanced_container_insights": true }
+                }
+              },
+              "traces": { "traces_collected": { "application_signals": {} } }
+            }
+          }
+        }
+
   # ---------------------------------------------------------------- Ingress: CloudFront -> VPC origin -> internal ALB
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -837,6 +929,14 @@ Resources:
                 Action: [xray:GetTraceSegmentDestination, xray:UpdateTraceSegmentDestination, logs:PutResourcePolicy,
                          logs:DescribeResourcePolicies]
                 Resource: "*"
+              - Effect: Allow  # enable CloudWatch Application Signals (account-level, idempotent)
+                Action: application-signals:StartDiscovery
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/application-signals.cloudwatch.amazonaws.com/*"
+                Condition:
+                  StringEquals: { iam:AWSServiceName: application-signals.cloudwatch.amazonaws.com }
               - Effect: Allow
                 Action: [ec2:AuthorizeSecurityGroupIngress, ec2:RevokeSecurityGroupIngress]
                 Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${AlbSecurityGroup.GroupId}"
@@ -898,6 +998,8 @@ Resources:
           - { Name: AGENT_LOG_GROUP, Value: !Ref AgentLogGroup }
           - { Name: ENABLE_TRANSACTION_SEARCH, Value: !Ref EnableTransactionSearch }
           - { Name: BEDROCK_MODEL_ID, Value: !Ref BedrockModelId }
+          - { Name: SHOPPER_TRAFFIC_PER_MINUTE, Value: !Ref ShopperTrafficPerMinute }
+          - { Name: AGENT_TRAFFIC_TURNS_PER_MINUTE, Value: !Ref AgentTrafficTurnsPerMinute }
           - { Name: EXTERNAL_OTLP_ENDPOINT, Value: !Ref ExternalOtlpEndpoint }
           - { Name: SOURCE_REPO_URL, Value: !Ref SourceRepoUrl }
           - { Name: SOURCE_BRANCH, Value: !Ref SourceBranch }
@@ -1024,6 +1126,7 @@ Resources:
       - PaymentPodIdentity
       - AssistantPodIdentity
       - CollectorPodIdentity
+      - CloudWatchObservabilityAddon  # its webhook must be up before the pods are created
       - AgentLogGroup
       - CatalogRepository
       - InventoryRepository
@@ -1042,6 +1145,8 @@ Resources:
       BedrockModelId: !Ref BedrockModelId
       ExternalOtlpEndpoint: !Ref ExternalOtlpEndpoint
       EnableTransactionSearch: !Ref EnableTransactionSearch
+      ShopperTrafficPerMinute: !Ref ShopperTrafficPerMinute
+      AgentTrafficTurnsPerMinute: !Ref AgentTrafficTurnsPerMinute
       Source: !If [UseS3Source, !Sub "s3://${SourceS3Bucket}/${SourceS3Key}", !Sub "${SourceRepoUrl}#${SourceBranch}"]
 
   # ---------------------------------------------------------------- Dashboard
@@ -1054,7 +1159,7 @@ Resources:
           {
             "widgets": [
               {"type": "text", "x": 0, "y": 0, "width": 24, "height": 2,
-               "properties": {"markdown": "## ⚡ VoltVerse - business & service health\nTraces: [Transaction Search](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#transaction-search) · [Trace map](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map) · Sparky agent: [GenAI Observability](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#gen-ai-observability/agent-core) · Logs: `${AppLog}`, `${AgentLog}` · Metrics: `VoltVerse`, `bedrock-agentcore`"}},
+               "properties": {"markdown": "## ⚡ VoltVerse - business & service health\nServices: [Application Signals](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#application-signals:services) · Cluster: [Container Insights](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#container-insights:infrastructure) · Traces: [Transaction Search](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#transaction-search) · [Trace map](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map) · Sparky agent: [GenAI Observability](https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#gen-ai-observability/agent-core) · Logs: `${AppLog}`, `${AgentLog}` · Metrics: `VoltVerse`, `bedrock-agentcore`"}},
               {"type": "metric", "x": 0, "y": 2, "width": 8, "height": 6,
                "properties": {"title": "Checkout attempts by outcome", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
                  "metrics": [
@@ -1068,16 +1173,21 @@ Resources:
                  "metrics": [
                    ["VoltVerse", "voltverse.payment.authorizations", "service.name", "payment", "outcome", "approved"],
                    ["...", "card_declined"], ["...", "insufficient_funds"], ["...", "processor_error"]]}},
-              {"type": "metric", "x": 0, "y": 8, "width": 12, "height": 6,
-               "properties": {"title": "Average server latency by service (s)", "region": "${AWS::Region}", "stat": "Average", "period": 60, "view": "timeSeries",
+              {"type": "metric", "x": 0, "y": 8, "width": 8, "height": 6,
+               "properties": {"title": "Application Signals: average latency by service (ms)", "region": "${AWS::Region}", "stat": "Average", "period": 60, "view": "timeSeries",
                  "metrics": [
-                   ["VoltVerse", "http.server.request.duration", "service.name", "catalog"], ["...", "inventory"], ["...", "cart"],
-                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "sparky"]]}},
-              {"type": "metric", "x": 12, "y": 8, "width": 12, "height": 6,
-               "properties": {"title": "Requests by service", "region": "${AWS::Region}", "stat": "SampleCount", "period": 60, "view": "timeSeries", "stacked": true,
+                   ["ApplicationSignals", "Latency", "Environment", "${AppSignalsEnv}", "Service", "catalog"], ["...", "inventory"], ["...", "cart"],
+                   ["...", "checkout"], ["...", "payment"], ["...", "orders"]]}},
+              {"type": "metric", "x": 8, "y": 8, "width": 8, "height": 6,
+               "properties": {"title": "Application Signals: requests by service", "region": "${AWS::Region}", "stat": "SampleCount", "period": 60, "view": "timeSeries", "stacked": true,
                  "metrics": [
-                   ["VoltVerse", "http.server.request.duration", "service.name", "catalog"], ["...", "inventory"], ["...", "cart"],
-                   ["...", "checkout"], ["...", "payment"], ["...", "orders"], ["...", "sparky"]]}},
+                   ["ApplicationSignals", "Latency", "Environment", "${AppSignalsEnv}", "Service", "catalog"], ["...", "inventory"], ["...", "cart"],
+                   ["...", "checkout"], ["...", "payment"], ["...", "orders"]]}},
+              {"type": "metric", "x": 16, "y": 8, "width": 8, "height": 6,
+               "properties": {"title": "Application Signals: faults (5xx) by service", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
+                 "metrics": [
+                   ["ApplicationSignals", "Fault", "Environment", "${AppSignalsEnv}", "Service", "catalog"], ["...", "inventory"], ["...", "cart"],
+                   ["...", "checkout"], ["...", "payment"], ["...", "orders"]]}},
               {"type": "metric", "x": 0, "y": 14, "width": 8, "height": 6,
                "properties": {"title": "Sparky: chats by outcome", "region": "${AWS::Region}", "stat": "Sum", "period": 60, "view": "timeSeries", "stacked": true,
                  "metrics": [
@@ -1100,6 +1210,7 @@ Resources:
           }
         - AppLog: !Ref AppLogGroup
           AgentLog: !Ref AgentLogGroup
+          AppSignalsEnv: !Sub eks:${Cluster}/voltverse
 
 Outputs:
   StorefrontUrl:
@@ -1120,6 +1231,15 @@ Outputs:
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#gen-ai-observability/agent-core
   AgentLogGroup:
     Value: !Ref AgentLogGroup
+  ApplicationSignalsUrl:
+    Description: The microservices in CloudWatch Application Signals (service map, latency/faults/errors, SLOs)
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#application-signals:services
+  ContainerInsightsUrl:
+    Description: The EKS cluster in CloudWatch Container Insights (enhanced observability)
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#container-insights:infrastructure
+  ContainerLogGroup:
+    Description: Container stdout/stderr collected by Fluent Bit (Container Insights)
+    Value: !Ref ContainerInsightsApplicationLogGroup
   TraceMapUrl:
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#xray:service-map/map
   ApplicationLogGroup:
