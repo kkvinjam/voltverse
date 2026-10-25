@@ -4,7 +4,7 @@ Suggested hands-on labs, about 2 hours in total. Each lab works with the stack d
 
 ## Before the event
 
-1. Launch one stack per participant account (see the README). The `loadgen` deployment starts producing traffic immediately.
+1. Launch one stack per participant account (see the README). The `loadgen` (shoppers) and `sparky-traffic` (AI assistant conversations) deployments start producing traffic immediately.
 2. In each account, confirm that Bedrock is enabled for the Anthropic model. Then send one message to Sparky.
 3. Optional:
    - give participants `kubectl`: set `ParticipantRoleArn`, and either `EnablePublicClusterEndpoint=true` with `PublicEndpointCidrs` set to your network, or a CloudShell VPC environment

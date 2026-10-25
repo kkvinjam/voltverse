@@ -12,6 +12,7 @@ Usage:
   scripts/sparky-traffic.py https://dxxxx.cloudfront.net                    # 10 min, ~8 turns/min
   scripts/sparky-traffic.py https://dxxxx.cloudfront.net --minutes 30 --rate 10 --concurrency 3
   scripts/sparky-traffic.py https://dxxxx.cloudfront.net --conversations 5  # fixed number, then stop
+  scripts/sparky-traffic.py http://storefront.voltverse --minutes 0 --rate 2  # run forever (the sparky-traffic pod)
 
 Standard library only (Python 3.9+).
 """
@@ -27,7 +28,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from collections import Counter
+from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
 
 EMAILS = ["alex.rivera@example.com", "sam.chen@example.com", "jordan.lee@example.com", "taylor.kim@example.com"]
@@ -42,7 +43,7 @@ class Client:
         self.lock = threading.Lock()
         self.next_slot = time.monotonic()
         self.stats = Counter()
-        self.latencies: list[float] = []
+        self.latencies: deque[float] = deque(maxlen=1000)  # bounded: the pod runs forever
         self.tools = Counter()
 
     def _pace(self) -> None:
@@ -183,7 +184,7 @@ def run_conversation(client: Client, name: str, verbose: bool) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("url", help="Store URL, e.g. https://dxxxx.cloudfront.net")
-    ap.add_argument("--minutes", type=float, default=10, help="how long to run (default 10)")
+    ap.add_argument("--minutes", type=float, default=10, help="how long to run (default 10, 0 = forever)")
     ap.add_argument("--conversations", type=int, default=0, help="stop after N conversations instead")
     ap.add_argument("--rate", type=float, default=8, help="max Sparky turns per minute (default 8, gateway limit ~12)")
     ap.add_argument("--concurrency", type=int, default=3)
@@ -191,9 +192,11 @@ def main() -> None:
     args = ap.parse_args()
 
     client = Client(args.url, args.rate)
-    deadline = time.monotonic() + args.minutes * 60
+    forever = args.minutes <= 0 and not args.conversations
+    deadline = float("inf") if forever else time.monotonic() + args.minutes * 60
     started = 0
     counter_lock = threading.Lock()
+    t0 = time.monotonic()
 
     def worker() -> None:
         nonlocal started
@@ -202,24 +205,35 @@ def main() -> None:
                 if args.conversations and started >= args.conversations:
                     return
                 started += 1
-            run_conversation(client, random.choice(list(SCENARIOS)), args.verbose)
+                n = started
+            try:
+                run_conversation(client, random.choice(list(SCENARIOS)), args.verbose)
+            except Exception as e:  # a long-running generator must survive anything
+                client.stats[f"exception_{type(e).__name__}"] += 1
+                time.sleep(10)
+            if forever and n % 20 == 0:
+                report(client, t0, f"after {n} conversations")
 
-    print(f"Sparky traffic -> {args.url}  ({args.rate:g} turns/min max, {args.concurrency} parallel shoppers, "
-          f"{'%d conversations' % args.conversations if args.conversations else '%g minutes' % args.minutes})")
-    t0 = time.monotonic()
+    duration = "forever" if forever else (
+        "%d conversations" % args.conversations if args.conversations else "%g minutes" % args.minutes)
+    print(f"Sparky traffic -> {args.url}  ({args.rate:g} turns/min max, {args.concurrency} parallel shoppers, {duration})",
+          flush=True)
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         for _ in range(args.concurrency):
             pool.submit(worker)
+    report(client, t0, "Done")
 
-    lat = client.latencies
-    print(f"\nDone in {(time.monotonic() - t0) / 60:.1f} min")
+
+def report(client: Client, t0: float, title: str) -> None:
+    lat = list(client.latencies)
+    print(f"\n{title} in {(time.monotonic() - t0) / 60:.1f} min")
     print(f"conversations: {client.stats['conversations']}   turns ok: {client.stats['turns_ok']}")
     if lat:
         print(f"turn latency: p50 {statistics.median(lat):.1f}s  max {max(lat):.1f}s")
-    problems = {k: v for k, v in client.stats.items() if k not in ("conversations", "turns_ok") and not k.startswith("scenario:")}
+    problems = {k: v for k, v in list(client.stats.items()) if k not in ("conversations", "turns_ok") and not k.startswith("scenario:")}
     print(f"problems: {problems or 'none'}")
-    print("tool calls:", dict(client.tools.most_common()))
-    print("scenarios:", {k[9:]: v for k, v in sorted(client.stats.items()) if k.startswith("scenario:")})
+    print("tool calls:", dict(Counter(client.tools).most_common()))
+    print("scenarios:", {k[9:]: v for k, v in sorted(client.stats.items()) if k.startswith("scenario:")}, flush=True)
 
 
 if __name__ == "__main__":

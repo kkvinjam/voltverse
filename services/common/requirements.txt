@@ -4,7 +4,8 @@ uvicorn[standard]==0.54.0
 httpx==0.28.1
 boto3==1.43.117
 pydantic[email]==2.14.1
-# AWS Distro for OpenTelemetry (ADOT) Python SDK: OpenTelemetry SDK + OTLP exporters + auto-instrumentation
-# for FastAPI/httpx/botocore/logging, X-Ray trace ids/propagation, SigV4-signed export to the CloudWatch OTLP
-# endpoints and Bedrock AgentCore (GenAI) observability. Started with `opentelemetry-instrument`.
-aws-opentelemetry-distro==0.21.0
+# OpenTelemetry API only (spans, attributes and business metrics in the code). On EKS the SDK and the
+# auto-instrumentation are injected at pod start by the Amazon CloudWatch Observability add-on
+# (annotation instrumentation.opentelemetry.io/inject-python), which enables CloudWatch Application Signals.
+# The injected copy is first on PYTHONPATH, so it takes precedence over this one.
+opentelemetry-api==1.44.0

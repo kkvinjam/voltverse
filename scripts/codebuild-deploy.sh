@@ -9,6 +9,13 @@ set -euo pipefail
 : "${BEDROCK_MODEL_ID:?}" "${APP_LOG_GROUP:?}" "${METRICS_LOG_GROUP:?}" "${ENVIRONMENT_NAME:?}"
 : "${VPC_ID:?}" "${ALB_SECURITY_GROUP_ID:?}" "${AGENT_LOG_GROUP:?}"
 
+# Traffic generators (0 disables one). Agent traffic calls Bedrock on every turn.
+export SHOPPER_TRAFFIC_PER_MINUTE="${SHOPPER_TRAFFIC_PER_MINUTE:-12}"
+export AGENT_TRAFFIC_TURNS_PER_MINUTE="${AGENT_TRAFFIC_TURNS_PER_MINUTE:-2}"
+replicas_for() { python3 -c 'import sys; print(1 if float(sys.argv[1]) > 0 else 0)' "$1"; }
+export LOADGEN_REPLICAS="$(replicas_for "$SHOPPER_TRAFFIC_PER_MINUTE")"
+export AGENT_TRAFFIC_REPLICAS="$(replicas_for "$AGENT_TRAFFIC_TURNS_PER_MINUTE")"
+
 export ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 export IMAGE_TAG="${IMAGE_TAG:-b${CODEBUILD_BUILD_NUMBER:-$(date +%s)}}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,6 +43,14 @@ JSON
   echo "Transaction Search enabled (spans -> aws/spans)"
 else
   echo "WARNING: Transaction Search is off and EnableTransactionSearch=false - traces sent to the CloudWatch OTLP endpoint will be rejected"
+fi
+
+log "Enabling CloudWatch Application Signals"
+# Account + region level and idempotent: creates the Application Signals service-linked role if needed.
+if aws application-signals start-discovery; then
+  echo "Application Signals discovery enabled"
+else
+  echo "WARNING: could not enable Application Signals - enable it once in the CloudWatch console (Application Signals > Services)"
 fi
 
 log "Allowing the CloudFront VPC origin to reach the internal ALB"
@@ -74,15 +89,52 @@ log "Seeding DynamoDB"
 python3 -c "import boto3" 2>/dev/null || python3 -m pip install --quiet boto3
 python3 scripts/seed_data.py --products-table "$PRODUCTS_TABLE" --inventory-table "$INVENTORY_TABLE" --region "$AWS_REGION"
 
+log "Waiting for the CloudWatch Observability add-on (Application Signals auto-instrumentation webhook)"
+# Pods are only instrumented if the add-on's operator is up when they are created.
+for _ in $(seq 1 60); do
+  [ -n "$(kubectl -n amazon-cloudwatch get deploy -o name 2>/dev/null)" ] && break
+  sleep 10
+done
+kubectl -n amazon-cloudwatch wait --for=condition=Available deploy --all --timeout=15m
+kubectl get mutatingwebhookconfigurations -o name | grep -i cloudwatch \
+  || { echo "CloudWatch Observability add-on webhook not found - check the add-on in the EKS console"; exit 1; }
+
 log "Applying Kubernetes manifests"
+# Script ConfigMaps come straight from the files (no ${VAR} rendering); their hashes roll the pods on change.
+export LOADGEN_SCRIPT_HASH="$(cat services/loadgen/loadgen.py data/products.json | sha256sum | cut -c1-16)"
+export SPARKY_TRAFFIC_SCRIPT_HASH="$(sha256sum scripts/sparky-traffic.py | cut -c1-16)"
 python3 scripts/render.py k8s/*.yaml > /tmp/voltverse.yaml
+kubectl apply -f k8s/00-namespaces.yaml
+kubectl -n voltverse create configmap loadgen-script --from-file=loadgen.py=services/loadgen/loadgen.py \
+  --from-file=products.json=data/products.json \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n voltverse create configmap sparky-traffic-script --from-file=sparky-traffic.py=scripts/sparky-traffic.py \
+  --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f /tmp/voltverse.yaml
 
+INSTRUMENTED="catalog inventory cart checkout payment orders loadgen"
 log "Waiting for rollouts"
 kubectl -n observability rollout status deploy/otel-collector --timeout=15m
-for d in catalog inventory cart checkout payment orders assistant storefront; do
+for d in catalog inventory cart checkout payment orders assistant storefront loadgen sparky-traffic; do
   kubectl -n voltverse rollout status "deploy/${d}" --timeout=15m
 done
+
+log "Verifying Application Signals auto-instrumentation"
+# The injected init container is the proof. If pods raced the webhook, restart them once.
+missing=""
+for d in $INSTRUMENTED; do
+  # One line per running pod: "<pod> <init containers...>"
+  pods="$(kubectl -n voltverse get pods -l "app=${d}" --field-selector=status.phase=Running \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.initContainers[*].name}{"\n"}{end}')"
+  if [ -n "$pods" ] && grep -qv opentelemetry-auto-instrumentation-python <<<"$pods"; then missing="$missing $d"; fi
+done
+if [ -n "$missing" ]; then
+  echo "Not instrumented yet:${missing} - restarting"
+  for d in $missing; do kubectl -n voltverse rollout restart "deploy/${d}"; done
+  for d in $missing; do kubectl -n voltverse rollout status "deploy/${d}" --timeout=15m; done
+else
+  echo "All instrumented: ${INSTRUMENTED}"
+fi
 
 log "Waiting for the storefront to become healthy behind the load balancer"
 for _ in $(seq 1 60); do

@@ -1,0 +1,49 @@
+# Continuous conversations with Sparky, the AI assistant, through the storefront gateway (the same
+# /api/assistant/chat/stream route the chat widget uses). Each conversation is a realistic multi-turn scenario
+# (recommendations, comparisons, cart changes, quotes, order tracking, cancellations, policies, off-topic), so
+# GenAI Observability always has sessions, model calls and tool calls to show.
+#
+# EVERY TURN CALLS AMAZON BEDROCK AND COSTS MONEY. Tune with the AgentTrafficTurnsPerMinute stack parameter
+# (0 disables it), or scale it directly:  kubectl -n voltverse scale deploy/sparky-traffic --replicas=0
+# The script (scripts/sparky-traffic.py, standard library only) is mounted from the sparky-traffic-script
+# ConfigMap, which the deployer creates from the file. It reuses the catalog image for its Python runtime.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sparky-traffic
+  namespace: voltverse
+  labels: { app: sparky-traffic, app.kubernetes.io/part-of: voltverse }
+spec:
+  replicas: ${AGENT_TRAFFIC_REPLICAS}
+  selector:
+    matchLabels: { app: sparky-traffic }
+  template:
+    metadata:
+      labels: { app: sparky-traffic, app.kubernetes.io/part-of: voltverse }
+      annotations:
+        script-hash: "${SPARKY_TRAFFIC_SCRIPT_HASH}"
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector: { kubernetes.io/arch: amd64 }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: sparky-traffic
+          image: "${ECR_REGISTRY}/${REPO_PREFIX}/catalog:${IMAGE_TAG}"
+          # One shopper at a time, paced below the gateway's per-client assistant limit (12 requests/minute).
+          command: ["python", "/scripts/sparky-traffic.py", "http://storefront.voltverse",
+                    "--minutes", "0", "--rate", "${AGENT_TRAFFIC_TURNS_PER_MINUTE}", "--concurrency", "1"]
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: script, mountPath: /scripts }
+      volumes:
+        - name: script
+          configMap: { name: sparky-traffic-script }
