@@ -926,8 +926,8 @@ Resources:
                 Action: elasticloadbalancing:DescribeTargetHealth
                 Resource: "*"
               - Effect: Allow  # enable CloudWatch Transaction Search (account-level, only when it is off)
-                Action: [xray:GetTraceSegmentDestination, xray:UpdateTraceSegmentDestination, logs:PutResourcePolicy,
-                         logs:DescribeResourcePolicies]
+                Action: [xray:GetTraceSegmentDestination, xray:UpdateTraceSegmentDestination, logs:CreateLogGroup,
+                         logs:DescribeLogGroups, logs:PutResourcePolicy, logs:DescribeResourcePolicies]
                 Resource: "*"
               - Effect: Allow  # enable CloudWatch Application Signals (account-level, idempotent)
                 Action: application-signals:StartDiscovery
