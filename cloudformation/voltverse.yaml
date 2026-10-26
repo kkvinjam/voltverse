@@ -941,6 +941,9 @@ Resources:
               - Effect: Allow  # Application Signals SLR existence check during Transaction Search enablement
                 Action: iam:GetRole
                 Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/application-signals.cloudwatch.amazonaws.com/*"
+              - Effect: Allow  # Transaction Search creates a CloudTrail service-linked channel for Application Signals
+                Action: cloudtrail:CreateServiceLinkedChannel
+                Resource: !Sub "arn:${AWS::Partition}:cloudtrail:*:*:channel/aws-service-channel/application-signals/*"
               - Effect: Allow
                 Action: [ec2:AuthorizeSecurityGroupIngress, ec2:RevokeSecurityGroupIngress]
                 Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${AlbSecurityGroup.GroupId}"
