@@ -587,6 +587,11 @@ Resources:
                 Resource:
                   - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
                   - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+              # Anthropic models in Bedrock are enabled via AWS Marketplace; the first InvokeModel
+              # completes the subscription using the caller's identity, so the role needs these.
+              - Effect: Allow
+                Action: [aws-marketplace:ViewSubscriptions, aws-marketplace:Subscribe]
+                Resource: "*"
         - PolicyName: agent-telemetry
           PolicyDocument:
             Version: "2012-10-17"
