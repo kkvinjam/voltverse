@@ -4,6 +4,12 @@ The service is stateless: the storefront sends the visible conversation with eac
 so any replica can answer. Strands emits OpenTelemetry spans for every agent cycle, model
 call and tool call through the global tracer provider set up by `opentelemetry-instrument`,
 so agent traces join the same distributed trace as the microservice calls they trigger.
+
+Backends (SPARKY_BACKEND):
+  http      (default) tools call the VoltVerse microservices (EKS, docker compose)
+  embedded  Sparky runs on its own: the real microservices are started in-process against an in-memory
+            DynamoDB and seeded with demo orders (see embedded.py). Used by the standalone image on
+            Bedrock AgentCore Runtime, which calls POST /invocations and GET /ping.
 """
 
 from __future__ import annotations
@@ -14,9 +20,11 @@ import logging
 import os
 import time
 import uuid
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 
 from botocore.config import Config
+from fastapi import Request
 from fastapi.responses import StreamingResponse
 from opentelemetry import baggage, context, metrics, trace
 from pydantic import BaseModel, Field
@@ -41,6 +49,12 @@ MAX_TURNS = 20
 MAX_CHARS = 2000
 AGENT_LIMITS = {"turns": 10}  # cap model<->tool cycles per request (cost and latency guard)
 HEARTBEAT_SECONDS = 10
+BACKEND = os.getenv("SPARKY_BACKEND", "http")
+
+if BACKEND == "embedded":
+    from .embedded import STORE
+
+    STORE.start_background()  # takes a few seconds; requests wait for it in _backend_ready()
 
 SYSTEM_PROMPT = """You are Sparky, the friendly and knowledgeable support assistant for VoltVerse, an online \
 electronics store ("Electronics, energized."). You help shoppers find products, compare options, manage their \
@@ -134,9 +148,24 @@ def _failed(span, e: Exception) -> None:
 UNAVAILABLE = "Sparky is taking a short break. Please try again in a moment."
 
 
+async def _backend_ready() -> None:
+    if BACKEND == "embedded":
+        try:
+            await asyncio.to_thread(STORE.wait)
+        except RuntimeError as e:
+            log.error("%s", e)
+            raise ServiceError(503, "store_unavailable", UNAVAILABLE) from e
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
     """Non-streaming variant (handy for curl and tests)."""
+    await _backend_ready()
+    return await _invoke(req)
+
+
+async def _invoke(req: ChatRequest) -> dict:
+    """One non-streaming agent turn (shared by /chat and /invocations)."""
     session_id = req.sessionId or str(uuid.uuid4())
     span = trace.get_current_span()
     span.set_attribute("session.id", session_id)
@@ -168,6 +197,7 @@ async def chat_stream(req: ChatRequest):
 
     Heartbeat comments keep the connection alive through CloudFront/ALB while tools run.
     """
+    await _backend_ready()
     session_id = req.sessionId or str(uuid.uuid4())
     span = trace.get_current_span()
     span.set_attribute("session.id", session_id)
@@ -224,3 +254,61 @@ async def chat_stream(req: ChatRequest):
 
     return StreamingResponse(events(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------------------------------------------------------------- Bedrock AgentCore Runtime contract
+# AgentCore Runtime calls GET /ping and POST /invocations on port 8080, and sends the runtime session id in a
+# header. Each runtime session runs in its own microVM, so the conversation and cart can live in memory here.
+SESSION_HEADER = "x-amzn-bedrock-agentcore-runtime-session-id"
+MAX_SESSIONS = 500
+_sessions: OrderedDict[str, list[ChatMessage]] = OrderedDict()
+
+
+class Invocation(BaseModel):
+    prompt: str | None = Field(None, min_length=1, max_length=MAX_CHARS)
+    messages: list[ChatMessage] | None = Field(None, min_length=1, max_length=60)
+    action: str | None = Field(None, pattern="^(chat|demo_data|reset)$")
+    cartId: str | None = Field(None, pattern=r"^[0-9a-fA-F-]{36}$")
+    sessionId: str | None = Field(None, max_length=100)
+
+
+@app.get("/ping", include_in_schema=False)
+async def ping():
+    return {"status": "Healthy"}
+
+
+@app.post("/invocations")
+async def invocations(body: Invocation, request: Request):
+    """AgentCore Runtime entry point.
+
+    {"prompt": "..."}         one chat turn; the conversation is remembered per runtime session
+    {"messages": [...]}       one chat turn with an explicit history (like the storefront sends)
+    {"action": "demo_data"}   embedded backend only: the seeded demo orders (order numbers + emails)
+    {"action": "reset"}       forget this session's conversation
+    Chat turns return {"response", "sessionId", "toolsUsed", "cartChanged"}.
+    """
+    session_id = request.headers.get(SESSION_HEADER) or body.sessionId or str(uuid.uuid4())
+    if body.action == "demo_data":
+        if BACKEND != "embedded":
+            raise ServiceError(404, "no_demo_data", "Demo data is only available with SPARKY_BACKEND=embedded")
+        await _backend_ready()
+        return {"sessionId": session_id, **STORE.demo_data()}
+    if body.action == "reset":
+        _sessions.pop(session_id, None)
+        return {"sessionId": session_id, "status": "reset"}
+    if body.messages:
+        messages = list(body.messages)
+    elif body.prompt:
+        messages = [*_sessions.get(session_id, []), ChatMessage(role="user", content=body.prompt)]
+    else:
+        raise ServiceError(400, "invalid_request", "Send a prompt, messages or an action")
+    await _backend_ready()
+    # One cart per runtime session, derived from the session id (the model never chooses it).
+    cart_id = body.cartId or str(uuid.uuid5(uuid.NAMESPACE_URL, f"sparky-session:{session_id}"))
+    result = await _invoke(ChatRequest(messages=messages, cartId=cart_id, sessionId=session_id[:64]))
+    _sessions[session_id] = [*messages, ChatMessage(role="assistant", content=result["reply"][:8000])][-MAX_TURNS:]
+    _sessions.move_to_end(session_id)
+    while len(_sessions) > MAX_SESSIONS:
+        _sessions.popitem(last=False)
+    return {"response": result["reply"], "sessionId": session_id, "toolsUsed": result["toolsUsed"],
+            "cartChanged": result["cartChanged"]}

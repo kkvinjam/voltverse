@@ -3,6 +3,7 @@ dist/
 __pycache__/
 *.pyc
 .venv/
+.venv-sparky/
 .pytest_cache/
 .DS_Store
 *.log
