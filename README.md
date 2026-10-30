@@ -210,6 +210,34 @@ The ConfigMap also has `CHAOS_LATENCY_MS` / `CHAOS_ERROR_RATE` (applied to every
 
 ---
 
+## Run Sparky standalone
+
+Sparky can also run **on its own**, without EKS, a VPC or DynamoDB, and still hold meaningful shopping and support conversations:
+- With `SPARKY_BACKEND=embedded`, Sparky starts the **real** catalog, inventory, cart, checkout, payment and orders services inside its own container. They run against an in-memory DynamoDB emulator (moto), so tools and business rules behave exactly as on EKS.
+- The store is seeded with the catalog and **demo orders in every state**: just placed, processing, shipped, out for delivery, delivered (returnable), delivered (return window closed), and cancelled and refunded.
+- It implements the **Bedrock AgentCore Runtime** contract: `GET /ping`, and `POST /invocations` with `{"prompt": ...}`, `{"action": "demo_data"}` or `{"action": "reset"}`. The conversation and cart are kept per runtime session.
+- **Simulated shoppers** (`scripts/sparky_shopper.py`) hold unscripted conversations with it. A smaller model (default `global.anthropic.claude-haiku-5-5`) role-plays one of 15 personas with a goal: comparing laptops, building a cart, chasing a late order, cancelling, returning, checking a refund, off-topic requests, and more. Each conversation logs one JSON line with the persona, outcome, turns and tools used.
+
+**Run it locally** (needs only Bedrock access):
+```bash
+docker build -f services/sparky-standalone.Dockerfile -t sparky-standalone .        # from the repo root
+eval "$(aws configure export-credentials --format env)"                             # short-lived credentials
+docker run --rm -p 127.0.0.1:8080:8080 -e AWS_REGION=us-east-1 -e OTEL_SDK_DISABLED=true \
+  -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN sparky-standalone
+
+curl -s -X POST http://127.0.0.1:8080/invocations -H 'Content-Type: application/json' \
+  -H 'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: my-session-0123456789abcdefghijklmnop' \
+  -d '{"prompt": "I need noise cancelling headphones under $400"}'
+scripts/sparky_shopper.py --url http://127.0.0.1:8080 --conversations 3 --verbose   # simulated shoppers
+```
+
+**Deploy it to AWS** with `cloudformation/sparky-standalone.yaml`. Set the same `SourceRepoUrl` or `SourceS3Bucket`/`SourceS3Key` source parameters as the main stack. The stack creates:
+- an ECR repository, and an ARM64 CodeBuild project that builds and smoke-tests the images
+- Sparky on **Bedrock AgentCore Runtime** (public network mode, Bedrock-only IAM role)
+- the shopper simulator as an arm64 Lambda, run every 10 minutes by EventBridge (`ConversationsPer10Min`, default 1, `0` = off)
+
+Sparky then appears in **CloudWatch GenAI Observability → Bedrock AgentCore**. The `ChatCommand` output chats with it from a terminal. It's fully separate from the EKS stack: its own name (`voltverse_sparky`), role, repository and logs. It does share the account's Bedrock quotas with the EKS Sparky. Both sides of every simulated turn call Bedrock, and the AgentCore runtime log group isn't deleted with the stack.
+
 ## Local development
 
 ```bash
@@ -263,15 +291,19 @@ cd services/storefront && npm install && npm run dev
 
 ```
 cloudformation/voltverse.yaml   # the one template to launch everything
+cloudformation/sparky-standalone.yaml  # optional: Sparky alone on Bedrock AgentCore Runtime + simulated shoppers
 k8s/                            # Kubernetes manifests (rendered by scripts/render.py at deploy time)
 services/
   common/                       # shared FastAPI app factory, logging, DynamoDB + HTTP helpers, requirements
   python.Dockerfile             # one image definition for all Python services (ADOT SDK injected on EKS)
+  sparky-standalone.Dockerfile  # standalone Sparky with the embedded store (arm64-ready, build from repo root)
+  sparky-shopper.Dockerfile     # Lambda image for the shopper simulator
   catalog/ inventory/ cart/ checkout/ payment/ orders/ assistant/
   storefront/                   # React app, nginx gateway config, Dockerfile
   loadgen/                      # synthetic shopper traffic (loadgen pod)
 scripts/                        # deploy/destroy (CodeBuild), seeding, rendering, packaging, launch helpers,
-                                #   sparky-traffic.py (AI assistant traffic, sparky-traffic pod)
+                                #   sparky-traffic.py (AI assistant traffic, sparky-traffic pod),
+                                #   sparky_shopper.py (LLM-simulated shoppers for standalone Sparky)
 data/products.json              # catalog seed data
 local/                          # docker-compose stack for local development
 tests/                          # end-to-end integration tests

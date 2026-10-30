@@ -1,0 +1,15 @@
+# Build context for the images built from the repository root (services/sparky-standalone.Dockerfile and
+# services/sparky-shopper.Dockerfile). Allow-list: send only what they copy.
+*
+!services/common/
+!services/assistant/
+!services/catalog/
+!services/inventory/
+!services/cart/
+!services/checkout/
+!services/payment/
+!services/orders/
+!data/products.json
+!scripts/sparky_shopper.py
+**/__pycache__
+**/*.pyc

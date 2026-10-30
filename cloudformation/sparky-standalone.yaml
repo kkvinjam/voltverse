@@ -1,0 +1,440 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Standalone Sparky - the VoltVerse AI shopping assistant (Strands Agents on Amazon Bedrock) on Amazon Bedrock
+  AgentCore Runtime, with an embedded copy of the store (no EKS, VPC or DynamoDB) and a scheduled shopper
+  simulator that holds unscripted conversations with it. Observed in CloudWatch GenAI Observability.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: "Application source" }
+        Parameters: [SourceRepoUrl, SourceBranch, SourceS3Bucket, SourceS3Key]
+      - Label: { default: "Models" }
+        Parameters: [BedrockModelId, ShopperModelId]
+      - Label: { default: "Simulated shoppers" }
+        Parameters: [ConversationsPer10Min]
+      - Label: { default: "Settings" }
+        Parameters: [EnvironmentName, EnableTransactionSearch, LogRetentionDays, DeployVersion]
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: voltverse-sparky
+    AllowedPattern: "^[a-z][a-z0-9-]{2,19}$"
+    Description: >-
+      Lowercase prefix for every resource name. Must be unique per account and region. The AgentCore runtime
+      gets the same name with underscores (voltverse-sparky -> voltverse_sparky).
+  SourceRepoUrl:
+    Type: String
+    Default: https://github.com/YOUR_ORG/voltverse.git
+    Description: Git URL of this repository that CodeBuild can clone. Ignored when SourceS3Bucket is set.
+  SourceBranch:
+    Type: String
+    Default: main
+  SourceS3Bucket:
+    Type: String
+    Default: ""
+    Description: Optional. Bucket containing a zip of this repository (see scripts/package-source.sh). Overrides the Git URL.
+  SourceS3Key:
+    Type: String
+    Default: voltverse-source.zip
+  BedrockModelId:
+    Type: String
+    Default: global.anthropic.claude-opus-5-5
+    Description: Model or inference profile used by Sparky (must be invocable in this region).
+  ShopperModelId:
+    Type: String
+    Default: global.anthropic.claude-haiku-5-5
+    Description: Model or inference profile that role-plays the shoppers (a smaller model keeps the cost down).
+  ConversationsPer10Min:
+    Type: Number
+    Default: 1
+    MinValue: 0
+    MaxValue: 4
+    Description: >-
+      Simulated shopper conversations every 10 minutes (about 4-6 turns each). Both sides of every turn call
+      Amazon Bedrock. 0 turns the simulator off.
+  EnableTransactionSearch:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Turn on CloudWatch Transaction Search for this account/region if it is off (needed to store agent spans).
+      It is left enabled when the stack is deleted.
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90]
+  DeployVersion:
+    Type: String
+    Default: "1"
+    AllowedPattern: "^[a-zA-Z0-9._-]{1,32}$"
+    Description: Change this value and update the stack to rebuild the images and redeploy the agent.
+
+Conditions:
+  UseS3Source: !Not [!Equals [!Ref SourceS3Bucket, ""]]
+  ShopperEnabled: !Not [!Equals [!Ref ConversationsPer10Min, 0]]
+
+Resources:
+  # ---------------------------------------------------------------- Images
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${EnvironmentName}/sparky-standalone
+      EmptyOnDelete: true
+      ImageScanningConfiguration: { ScanOnPush: true }
+      RepositoryPolicyText:  # lets Lambda pull the shopper image (same account only)
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LambdaPull
+            Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer]
+            Condition:
+              StringLike: { aws:sourceArn: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:*" }
+
+  BuilderLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/codebuild/${EnvironmentName}-builder
+      RetentionInDays: !Ref LogRetentionDays
+
+  BuilderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: codebuild.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: builder
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt BuilderLogGroup.Arn
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:BatchGetImage, ecr:GetDownloadUrlForLayer, ecr:InitiateLayerUpload,
+                         ecr:UploadLayerPart, ecr:CompleteLayerUpload, ecr:PutImage]
+                Resource: !GetAtt Repository.Arn
+              - Effect: Allow  # enable CloudWatch Transaction Search (account-level, only when it is off)
+                Action: [xray:GetTraceSegmentDestination, xray:UpdateTraceSegmentDestination, logs:PutResourcePolicy,
+                         logs:DescribeResourcePolicies]
+                Resource: "*"
+              - !If
+                - UseS3Source
+                - Effect: Allow
+                  Action: s3:GetObject
+                  Resource: !Sub "arn:${AWS::Partition}:s3:::${SourceS3Bucket}/${SourceS3Key}"
+                - !Ref AWS::NoValue
+
+  BuilderProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${EnvironmentName}-builder
+      Description: Builds the standalone Sparky (linux/arm64) and shopper simulator images
+      ServiceRole: !GetAtt BuilderRole.Arn
+      TimeoutInMinutes: 45
+      Artifacts: { Type: NO_ARTIFACTS }
+      LogsConfig:
+        CloudWatchLogs: { Status: ENABLED, GroupName: !Ref BuilderLogGroup }
+      Environment:
+        Type: ARM_CONTAINER  # AgentCore Runtime runs linux/arm64 images
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/amazonlinux-aarch64-standard:3.0
+        PrivilegedMode: true  # required for docker builds
+        EnvironmentVariables:
+          - { Name: ACCOUNT_ID, Value: !Ref AWS::AccountId }
+          - { Name: REPOSITORY_URI, Value: !GetAtt Repository.RepositoryUri }
+          - { Name: IMAGE_TAG, Value: !Sub "v${DeployVersion}" }
+          - { Name: ENABLE_TRANSACTION_SEARCH, Value: !Ref EnableTransactionSearch }
+          - { Name: SOURCE_REPO_URL, Value: !Ref SourceRepoUrl }
+          - { Name: SOURCE_BRANCH, Value: !Ref SourceBranch }
+          - { Name: SOURCE_S3_URI, Value: !If [UseS3Source, !Sub "s3://${SourceS3Bucket}/${SourceS3Key}", ""] }
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: |
+          version: 0.2
+          env:
+            shell: bash
+          phases:
+            build:
+              commands:
+                - |
+                  set -uo pipefail
+                  respond() {
+                    [ -n "${CFN_RESPONSE_URL:-}" ] || return 0
+                    body="$(STATUS="$1" REASON="$2" python3 -c 'import json,os; e=os.environ; print(json.dumps({"Status": e["STATUS"], "Reason": e["REASON"][:900], "PhysicalResourceId": e.get("CFN_PHYSICAL_ID") or "sparky-images", "StackId": e["CFN_STACK_ID"], "RequestId": e["CFN_REQUEST_ID"], "LogicalResourceId": e["CFN_LOGICAL_ID"], "Data": {}}))')"
+                    curl -sS -X PUT -H "Content-Type:" --data-binary "$body" "$CFN_RESPONSE_URL" && echo "Reported $1 to CloudFormation"
+                  }
+                  rc=1
+                  rm -rf /tmp/src && mkdir -p /tmp/src
+                  if [ -n "${SOURCE_S3_URI:-}" ]; then
+                    aws s3 cp "$SOURCE_S3_URI" /tmp/src.zip && unzip -q /tmp/src.zip -d /tmp/src
+                  else
+                    git clone --depth 1 --branch "$SOURCE_BRANCH" "$SOURCE_REPO_URL" /tmp/src
+                  fi
+                  script="$(find /tmp/src -maxdepth 3 -path "*/scripts/codebuild-sparky-standalone.sh" | head -n 1)"
+                  if [ -n "$script" ]; then
+                    bash "$script"; rc=$?
+                  else
+                    echo "Could not find scripts/codebuild-sparky-standalone.sh in the source - check SourceRepoUrl / SourceS3Bucket"
+                  fi
+                  if [ "$rc" -eq 0 ]; then
+                    respond SUCCESS "Images built"
+                  else
+                    respond FAILED "Image build failed - see CodeBuild build ${CODEBUILD_BUILD_ID}"
+                  fi
+                  exit "$rc"
+
+  BuildTriggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: start-build
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: codebuild:StartBuild
+                Resource: !GetAtt BuilderProject.Arn
+
+  BuildTriggerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EnvironmentName}-build-trigger
+      RetentionInDays: !Ref LogRetentionDays
+
+  BuildTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-build-trigger
+      LoggingConfig: { LogGroup: !Ref BuildTriggerLogGroup }
+      Description: Starts the image build; the build reports back to CloudFormation itself.
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt BuildTriggerRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          codebuild = boto3.client("codebuild")
+
+          def handler(event, context):
+              physical_id = event.get("PhysicalResourceId") or f"{event['ResourceProperties']['ProjectName']}-images"
+              if event["RequestType"] == "Delete":  # nothing to clean up: the repository empties itself
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, physical_id)
+                  return
+              env = {
+                  "CFN_RESPONSE_URL": event["ResponseURL"],
+                  "CFN_STACK_ID": event["StackId"],
+                  "CFN_REQUEST_ID": event["RequestId"],
+                  "CFN_LOGICAL_ID": event["LogicalResourceId"],
+                  "CFN_PHYSICAL_ID": physical_id,
+              }
+              try:
+                  build = codebuild.start_build(
+                      projectName=event["ResourceProperties"]["ProjectName"],
+                      environmentVariablesOverride=[{"name": k, "value": v, "type": "PLAINTEXT"} for k, v in env.items()],
+                  )
+                  print(f"Started build {build['build']['id']}")
+              except Exception as e:
+                  print(f"Failed to start build: {e}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, physical_id, reason=str(e)[:500])
+
+  Images:
+    Type: Custom::SparkyImages
+    Properties:
+      ServiceToken: !GetAtt BuildTriggerFunction.Arn
+      ServiceTimeout: 2700
+      ProjectName: !Ref BuilderProject
+      # Changing any of these rebuilds the images on stack update.
+      DeployVersion: !Ref DeployVersion
+      Source: !If [UseS3Source, !Sub "s3://${SourceS3Bucket}/${SourceS3Key}", !Sub "${SourceRepoUrl}#${SourceBranch}"]
+
+  # ---------------------------------------------------------------- Sparky on Bedrock AgentCore Runtime
+  RuntimeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: bedrock-agentcore.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+              ArnLike: { aws:SourceArn: !Sub "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*" }
+      Policies:
+        - PolicyName: runtime
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer]
+                Resource: !GetAtt Repository.Arn
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+              # Runtime logs and agent telemetry (GenAI Observability)
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*"
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords, xray:GetSamplingRules, xray:GetSamplingTargets]
+                Resource: "*"
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals: { cloudwatch:namespace: bedrock-agentcore }
+
+  Runtime:
+    Type: AWS::BedrockAgentCore::Runtime
+    DependsOn: Images
+    Properties:
+      AgentRuntimeName: !Join ["_", !Split ["-", !Ref EnvironmentName]]
+      Description: Sparky, the VoltVerse AI shopping assistant, with an embedded demo store
+      RoleArn: !GetAtt RuntimeRole.Arn
+      ProtocolConfiguration: HTTP
+      NetworkConfiguration: { NetworkMode: PUBLIC }  # outbound only (Bedrock); no VPC needed
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub "${Repository.RepositoryUri}:v${DeployVersion}"
+      EnvironmentVariables:
+        SPARKY_BACKEND: embedded
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_REGION: !Ref AWS::Region
+        # ADOT SDK (bundled, started by opentelemetry-instrument) -> CloudWatch GenAI Observability
+        AGENT_OBSERVABILITY_ENABLED: "true"
+        OTEL_PYTHON_DISTRO: aws_distro
+        OTEL_PYTHON_CONFIGURATOR: aws_configurator
+        OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+        OTEL_TRACES_EXPORTER: otlp
+        OTEL_PYTHON_EXCLUDED_URLS: "ping,health,ready"
+        OTEL_SEMCONV_STABILITY_OPT_IN: "http,gen_ai_latest_experimental"
+      Tags: { app: voltverse-sparky }
+
+  # ---------------------------------------------------------------- Shopper simulator (scheduled Lambda)
+  ShopperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: shopper
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: bedrock-agentcore:InvokeAgentRuntime
+                Resource: [!GetAtt Runtime.AgentRuntimeArn, !Sub "${Runtime.AgentRuntimeArn}/*"]
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+
+  ShopperLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EnvironmentName}-shopper
+      RetentionInDays: !Ref LogRetentionDays
+
+  ShopperFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: Images
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-shopper
+      Description: Simulated shoppers holding unscripted conversations with standalone Sparky
+      PackageType: Image
+      Code: { ImageUri: !Sub "${Repository.RepositoryUri}:shopper-v${DeployVersion}" }
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 600
+      Role: !GetAtt ShopperRole.Arn
+      LoggingConfig: { LogGroup: !Ref ShopperLogGroup }
+      Environment:
+        Variables:
+          SPARKY_RUNTIME_ARN: !GetAtt Runtime.AgentRuntimeArn
+          SHOPPER_MODEL_ID: !Ref ShopperModelId
+          CONVERSATIONS_PER_RUN: !Ref ConversationsPer10Min
+
+  ShopperSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${EnvironmentName}-shopper
+      Description: Runs the shopper simulator every 10 minutes
+      ScheduleExpression: rate(10 minutes)
+      State: !If [ShopperEnabled, ENABLED, DISABLED]
+      Targets:
+        - Id: shopper
+          Arn: !GetAtt ShopperFunction.Arn
+          Input: !Sub '{"conversations": ${ConversationsPer10Min}}'
+
+  ShopperSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ShopperFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ShopperSchedule.Arn
+
+Outputs:
+  RuntimeArn:
+    Description: Sparky's AgentCore Runtime ARN
+    Value: !GetAtt Runtime.AgentRuntimeArn
+  RuntimeId:
+    Value: !GetAtt Runtime.AgentRuntimeId
+  ShopperFunction:
+    Description: "Invoke this Lambda for extra simulated conversations, payload {\"conversations\": 1}"
+    Value: !Ref ShopperFunction
+  ShopperLogGroup:
+    Description: One JSON line per simulated conversation (persona, outcome, turns, tools)
+    Value: !Ref ShopperLogGroup
+  GenAIObservabilityUrl:
+    Description: Sparky's sessions, traces, model and tool spans in CloudWatch GenAI Observability
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#gen-ai-observability/agent-core
+  ChatCommand:
+    Description: Chat with Sparky from a terminal (repeat with the same session id to continue the conversation)
+    Value: !Sub >-
+      aws bedrock-agentcore invoke-agent-runtime --region ${AWS::Region} --agent-runtime-arn ${Runtime.AgentRuntimeArn}
+      --runtime-session-id my-session-0123456789abcdefghijklmnop --content-type application/json
+      --payload '{"prompt": "Recommend noise cancelling headphones under $400"}' --cli-binary-format raw-in-base64-out /dev/stdout

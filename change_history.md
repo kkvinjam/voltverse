@@ -119,3 +119,53 @@ After the update, every loadgen checkout returned HTTP 400 (`empty_cart`), becau
 - `scripts/codebuild-deploy.sh`: the `loadgen-script` ConfigMap now also contains `products.json` (from `data/products.json`), and the script hash covers both files.
 - `k8s/50-loadgen.yaml`: new environment variables `INVENTORY_URL`, `RESTOCK_INTERVAL_S` and `RESTOCK_BELOW`.
 - Tested locally against mock gateway and inventory endpoints (18 low SKUs topped up to their initial stock). Deployed by re-running the `voltverse-deployer` CodeBuild project with an updated source zip.
+
+## 2026-10-28: Standalone Sparky (embedded store, AgentCore Runtime, simulated shoppers)
+
+### Why
+
+Sparky's tools call the store's microservices, so on its own it could only answer policy questions. This change lets Sparky run independently and hold meaningful conversations, without changing how it runs on EKS.
+
+### Changes
+
+- `services/assistant/app/embedded.py` (new): with `SPARKY_BACKEND=embedded`, Sparky starts the real catalog, inventory, cart, checkout, payment and orders services as local uvicorn processes, against an in-memory moto DynamoDB.
+  - Seeding: the catalog, plus 7 demo orders placed through checkout and backdated into each fulfilment state (confirmed, processing, shipped, out for delivery, delivered and returnable, delivered with the return window closed, cancelled and refunded).
+  - The child services get dummy AWS credentials and have OTel disabled. The store is ready in about 3 seconds.
+- `services/assistant/app/main.py`:
+  - `SPARKY_BACKEND` switch, default `http`, which is unchanged.
+  - Bedrock AgentCore Runtime contract: `GET /ping`, and `POST /invocations` (`prompt` / `messages` / `action: demo_data|reset`). Conversations are remembered per runtime session in a bounded LRU, and each session gets its own cart (uuid5 of the session id).
+  - `/chat` and `/invocations` share `_invoke()`.
+- `scripts/sparky_shopper.py` (new): an LLM shopper simulator (default model `global.anthropic.claude-haiku-5-5`).
+  - 15 personas with goals. Order personas use the demo orders fetched in the same session.
+  - Targets AgentCore Runtime (`--runtime-arn`) or the container (`--url`).
+  - Works as a CLI and as a Lambda handler, and logs one JSON line per conversation.
+- `services/sparky-standalone.Dockerfile`, `services/assistant/requirements-standalone.txt` (adds `moto[server]==5.2.4`), `services/sparky-shopper.Dockerfile` (Lambda image) and a root `.dockerignore` (allow-list for the builds that use the repository root as context).
+- `cloudformation/sparky-standalone.yaml` (new):
+  - ECR repository (empties on delete).
+  - ARM64 CodeBuild project, run by a custom resource, that builds and smoke-tests the images (`scripts/codebuild-sparky-standalone.sh`, which also enables Transaction Search).
+  - `AWS::BedrockAgentCore::Runtime` (public network mode, IAM role with Bedrock, ECR pull and telemetry permissions only).
+  - Shopper Lambda (arm64 image), run by an EventBridge `rate(10 minutes)` rule (`ConversationsPer10Min`, 0 disables it).
+- `tests/test_standalone.py` (new): the embedded store's demo order states and the tools against it, session memory in `/invocations`, and the shopper loop (no Bedrock calls).
+- `README.md`: new "Run Sparky standalone" section.
+
+### Effect on the EKS application
+
+None by default:
+- The EKS image doesn't install moto, keeps `SPARKY_BACKEND=http`, and never starts the embedded store.
+- The new `/ping` and `/invocations` routes aren't exposed by the nginx gateway.
+- The standalone stack uses separate names, roles, repositories and logs. It does share the account's Bedrock quotas.
+
+### Verification
+
+- `pytest tests`: 11 passed (7 existing, 4 new). `cfn-lint` passes on both templates.
+- The standalone arm64 image was built with Finch and is ready in about 3 seconds with 7 demo orders.
+- Real Bedrock test (us-east-1, Opus 5.5 for Sparky, Haiku 5.5 for the shopper), all with `goal_reached`:
+  - `cart_builder`: 4 turns, 6 tools.
+  - `track_order_forgot_email`: Sparky asked for the email before looking up the order.
+  - `return_item`: Sparky confirmed before starting the return, issued an RMA and reported the refund to the card.
+- The shopper Lambda image imports its handler, and its boto3 1.43.117 includes the `bedrock-agentcore` client.
+- Not yet deployed to AWS.
+
+### Observed during testing
+
+Sparky once had to add an item to the cart twice ("didn't save the first time"). The likely cause is concurrent `add_to_cart` tool calls racing in the cart service's read-modify-write. This exists on EKS too; it hasn't been fixed.
